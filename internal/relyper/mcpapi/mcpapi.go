@@ -28,6 +28,8 @@ import (
 	"github.com/garethgeorge/backrest/internal/relyper/approval"
 	"github.com/garethgeorge/backrest/internal/relyper/audit"
 	"github.com/garethgeorge/backrest/internal/relyper/identity"
+	"github.com/garethgeorge/backrest/internal/relyper/infra"
+	"github.com/garethgeorge/backrest/internal/relyper/infraapi"
 	"github.com/garethgeorge/backrest/internal/relyper/mcp"
 	"github.com/garethgeorge/backrest/internal/relyper/mcpauth"
 	"go.uber.org/zap"
@@ -117,7 +119,18 @@ func Setup(d Deps) (*Routes, error) {
 		})
 	}
 
+	// Application-aware backup: discovery, coverage, app plans, database
+	// dumps and verification. Docker is optional.
+	inf, err := infra.New(infra.Deps{Config: d.Config, Orchestrator: d.Orchestrator, OpLog: d.OpLog, Audit: auditLog, DataDir: dir}, infra.SettingsFromEnv(dir))
+	if err != nil {
+		zap.S().Errorw("Relyper infrastructure features disabled", "error", err)
+		inf = nil
+	} else {
+		go inf.Run(context.Background())
+	}
+
 	srv := mcp.New(mcp.Deps{
+		Infra:               inf,
 		Config:              d.Config,
 		Orchestrator:        d.Orchestrator,
 		OpLog:               d.OpLog,
@@ -138,6 +151,12 @@ func Setup(d Deps) (*Routes, error) {
 	routes := &Routes{
 		Authed:   map[string]http.Handler{path: handler},
 		Unauthed: oauth.Routes(),
+	}
+	if inf != nil {
+		routes.Authed[infraapi.Prefix] = &infraapi.Handler{Infra: inf, PlanExists: func(id string) bool {
+			_, err := d.Orchestrator.GetPlan(id)
+			return err == nil
+		}}
 	}
 	routes.Unauthed[mcp.Path] = srv.Handler()
 	if idp != nil {

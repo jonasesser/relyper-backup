@@ -28,6 +28,7 @@ import (
 	"github.com/garethgeorge/backrest/internal/orchestrator"
 	"github.com/garethgeorge/backrest/internal/relyper/approval"
 	"github.com/garethgeorge/backrest/internal/relyper/audit"
+	"github.com/garethgeorge/backrest/internal/relyper/infra"
 	"github.com/garethgeorge/backrest/internal/relyper/mcpauth"
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -49,7 +50,10 @@ type Deps struct {
 	Audit        *audit.Log
 	SSHDir       string
 	StatePath    string // Relyper MCP state file (remembered schedules)
-	Version      string
+	// Infra provides discovery, coverage, app plans and verification; nil
+	// disables those tools.
+	Infra   *infra.Service
+	Version string
 	// ResourceMetadataURL returns the URL of the protected resource metadata
 	// for a request, sent in WWW-Authenticate so OAuth clients find the
 	// authorization server.
@@ -130,6 +134,7 @@ func (s *Server) serverFor(scopes []string) *sdk.Server {
 	registerConfigTools(r)
 	registerRunTools(r)
 	registerRestrictedTools(r)
+	registerInfraTools(r)
 	s.servers[key] = srv
 	return srv
 }
@@ -149,6 +154,7 @@ func (s *Server) Tools() []ToolInfo {
 	registerConfigTools(r)
 	registerRunTools(r)
 	registerRestrictedTools(r)
+	registerInfraTools(r)
 	return r.infos
 }
 
