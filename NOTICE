@@ -1,0 +1,17 @@
+Relyper Backup
+https://github.com/jonasesser/relyper-backup
+
+Relyper Backup is a modified version of Backrest
+(https://github.com/garethgeorge/backrest), Copyright (c) Gareth George and
+contributors, licensed under the GNU General Public License v3.0.
+Relyper Backup is distributed under the same license; see LICENSE.
+
+Modifications are listed in UPSTREAM.md and CHANGELOG.md. The upstream
+version this fork is based on is recorded in UPSTREAM.md.
+
+The Docker image contains restic (https://restic.net), Copyright (c)
+Alexander Neumann and contributors, BSD 2-Clause License, and rclone
+(https://rclone.org), MIT License.
+
+webui/vendor/inlang contains a vendored copy of
+@inlang/plugin-message-format; its license is in that directory.

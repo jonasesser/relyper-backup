@@ -1,242 +1,64 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./webui/assets/logo.svg" width="400px">
-    <source media="(prefers-color-scheme: light)" srcset="./webui/assets/logo-black.svg" width="400px">
-    <img src="./webui/assets/logo.svg" width="400px">
-  </picture>
+  <img src="./webui/assets/relyper-logo.svg" width="360px" alt="Relyper Backup">
 </p>
 
-<p align="center">
-  <img src="https://github.com/garethgeorge/backrest/actions/workflows/test.yml/badge.svg" />
-  <img src="https://img.shields.io/github/downloads/garethgeorge/backrest/total" />
-  <img src="https://img.shields.io/docker/pulls/garethgeorge/backrest" />
-</p>
+# Relyper Backup
 
----
+**Intelligent backup management. Your infrastructure, your data, your
+control.**
 
-**Overview**
+Relyper Backup is a self-hosted backup platform built on
+[restic](https://restic.net). It is a downstream fork of
+[Backrest](https://github.com/garethgeorge/backrest) by Gareth George and
+keeps everything Backrest does: a web UI for repositories, plans, schedules,
+retention, snapshot browsing and restores, hooks and notifications.
 
-Backrest is a web-accessible backup solution built on top of [restic](https://restic.net/). Backrest provides a WebUI which wraps the restic CLI and makes it easy to create repos, browse snapshots, and restore files. Additionally, Backrest can run in the background and take an opinionated approach to scheduling snapshots and orchestrating repo health operations.
+Every repository is a standard restic repository. You can always restore with
+the plain restic CLI, without Relyper Backup.
 
-By building on restic, Backrest leverages its mature, fast, reliable, and secure backup capabilities while adding an intuitive interface.
+## What Relyper Backup adds today
 
-Built with Go, Backrest is distributed as a standalone, lightweight binary with restic as its sole dependency. It can securely create new repositories or manage existing ones. Once storage is configured, the WebUI handles most operations, while still allowing direct access to the powerful [restic CLI](https://restic.readthedocs.io/en/latest/manual_rest.html) for advanced operations when needed.
+- **One Docker image** with restic, OpenSSH, rclone and a health check,
+  started by tini so backups shut down cleanly (`DEPLOYMENT.md`).
+- **SFTP done carefully:** the server's host key is shown with its SHA-256
+  fingerprint and only trusted after you confirm it; a connection test checks
+  DNS, TCP, host key, login, SFTP, the directory, write access and the restic
+  repository step by step and tells you what failed.
+- **Reproducible builds:** no build-time downloads from CDNs.
+- Relyper branding with attribution to Backrest and restic.
 
-## Key Features
+Planned (not built yet): a native MCP server for AI clients with roles and
+server-side approval, Docker/Easypanel discovery, database dumps, backup
+coverage and guided disaster recovery. See `ROADMAP.md`.
 
-- **Web Interface**: Access locally or remotely (perfect for NAS deployments)
-- **Multi-Platform Support**: 
-  - Linux
-  - macOS
-  - Windows
-  - FreeBSD
-  - [Docker](https://hub.docker.com/r/garethgeorge/backrest)
-- **Backup Management**:
-  - Import existing restic repositories
-  - Cron-scheduled backups and maintenance (e.g. prune, check, forget, etc)
-  - Browse and restore files from snapshots
-  - Configurable notifications (Discord, Slack, Shoutrrr, Gotify, Healthchecks)
-  - Pre/post backup command hooks to execute shell scripts
-- **Storage Options**:
-  - Compatible with rclone remotes
-  - Supports all restic storage backends (S3, B2, Azure, GCS, local, SFTP, and [all rclone remotes](https://rclone.org/))
+## Quick start
 
-## Preview
-
-<p align="center">
-   <img src="https://f000.backblazeb2.com/file/gshare/screenshots/backrest-1.11.1-dashboard.png" width="80%" />
-   <img src="https://f000.backblazeb2.com/file/gshare/screenshots/backrest-1.11.1-browse-snapshot.png" width="80%" />
-   <img src="https://f000.backblazeb2.com/file/gshare/screenshots/backrest-1.11.1-add-plan.png" width="80%" />
-</p>
-
----
-
-# User Guide
-
-[See the Backrest docs](https://garethgeorge.github.io/backrest/introduction/getting-started).
-
----
-
-# Installation
-
-Backrest is packaged as a single executable. It runs directly on Linux, macOS, and Windows. [restic](https://github.com/restic/restic) is downloaded automatically on first run.
-
-Once installed, access Backrest at `http://localhost:9898` (default port). First-time setup will prompt for username and password creation.
-
-> [!NOTE]
-> To change the default port, set the `BACKREST_PORT` environment variable (e.g., `BACKREST_PORT=0.0.0.0:9898` to listen on all interfaces). The install script accepts `--allow-remote-access` as a shortcut for this.
->
-> Backrest will use your system's installed version of restic if it's available and compatible. If not, Backrest will download and install a suitable version in its data directory, keeping it updated. To use a specific restic binary, set the `BACKREST_RESTIC_COMMAND` environment variable to the desired path.
-
-## Linux & macOS (Recommended)
-
-The install script downloads the latest release, drops the binary into `/usr/local/bin`, and sets up the appropriate auto-start integration (systemd or OpenRC on Linux; launchd on macOS):
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/garethgeorge/backrest/main/install.sh | bash
+```bash
+git clone https://github.com/jonasesser/relyper-backup.git
+cd relyper-backup
+docker compose up -d --build
 ```
 
-Flags go after `--`:
+Open `http://<host>:9898` and **create the first user right away** – until
+then the instance has no authentication (see `SECURITY.md`). Put it behind a
+TLS reverse proxy before exposing it.
 
-```sh
-# Bind to all interfaces (default: 127.0.0.1:9898)
-curl -fsSL https://raw.githubusercontent.com/garethgeorge/backrest/main/install.sh | bash -s -- --allow-remote-access
+## Documentation
 
-# Uninstall (removes service, autostart entry, and /usr/local/bin/backrest)
-curl -fsSL https://raw.githubusercontent.com/garethgeorge/backrest/main/install.sh | bash -s -- --uninstall
-```
+| File | Content |
+|---|---|
+| `DEPLOYMENT.md` | Image, volumes, mounts, Easypanel, upgrades |
+| `SECURITY.md` | What is in place, threat model, hardening checklist |
+| `DISASTER-RECOVERY.md` | Restore with the UI or the plain restic CLI |
+| `ARCHITECTURE.md` | Components and where new features attach |
+| `ROADMAP.md` | Phases, status, open decisions |
+| `MCP.md` | Design of the planned MCP integration |
+| `UPSTREAM.md` | How the fork tracks Backrest |
+| `AGENTS.md` | Rules for contributors and coding agents |
+| `CHANGELOG.md` | Relyper changes |
 
-The service runs as your user by default (so config and data live under your `$HOME`). To install as `root` instead, pass `--root`. After install, access Backrest at `http://localhost:9898`.
+## License and attribution
 
-> [!TIP]
-> Review [install.sh](./install.sh) before piping it into a shell. You can also clone the repo and run `./install.sh` locally; it accepts the same flags.
-
-### macOS — Homebrew (alternative)
-
-[Homebrew tap](https://github.com/garethgeorge/homebrew-backrest-tap):
-
-```sh
-brew tap garethgeorge/homebrew-backrest-tap
-brew install backrest
-brew services start backrest
-```
-
-> [!NOTE]
-> You may need to grant Full Disk Access to Backrest. Go to `System Preferences > Security & Privacy > Privacy > Full Disk Access` and add `/usr/local/bin/backrest`.
-
-### Arch Linux (AUR)
-
-[Backrest on AUR](https://aur.archlinux.org/packages/backrest) is third-party (not maintained by the Backrest project) and tweaks the systemd unit; see the [AUR service file](https://aur.archlinux.org/cgit/aur.git/tree/backrest@.service?h=backrest) for details.
-
-```sh
-paru -Sy backrest  # or: yay -Sy backrest
-sudo systemctl enable --now backrest@$USER.service
-```
-
-## Docker
-
-Image: `ghcr.io/garethgeorge/backrest` (also on [Docker Hub](https://hub.docker.com/r/garethgeorge/backrest)).
-- Includes rclone and common Unix utilities
-- For a minimal image, use `ghcr.io/garethgeorge/backrest:scratch`
-
-### Docker Compose
-
-```yaml
-version: "3.8"
-services:
-  backrest:
-    image: ghcr.io/garethgeorge/backrest:latest
-    container_name: backrest
-    hostname: backrest
-    volumes:
-      - ./backrest/data:/data
-      - ./backrest/config:/config
-      - ./backrest/cache:/cache
-      - ./backrest/tmp:/tmp
-      - ./backrest/rclone:/root/.config/rclone # Mount for rclone config (needed when using rclone remotes)
-      - /path/to/backup/data:/userdata  # Mount local paths to backup
-      - /path/to/local/repos:/repos     # Mount local repos (optional for remote storage)
-    environment:
-      - BACKREST_DATA=/data
-      - BACKREST_CONFIG=/config/config.json
-      - XDG_CACHE_HOME=/cache
-      - TMPDIR=/tmp
-      - TZ=America/Los_Angeles
-    ports:
-      - "9898:9898"
-    restart: unless-stopped
-```
-
-## Windows
-
-Download the Windows installer for your architecture from the [releases page](https://github.com/garethgeorge/backrest/releases). The installer, named `Backrest-setup-[arch].exe`, places Backrest and a GUI tray application in `%localappdata%\Programs\Backrest\`. The tray application, set to start on login, monitors Backrest.
-
-> [!TIP]
-> To override the default port before installation, set a user environment variable named `BACKREST_PORT`. On Windows 10+, navigate to Settings > About > Advanced system settings > Environment Variables. Under "User variables", create a new variable `BACKREST_PORT` with the value `127.0.0.1:port` (e.g. `127.0.0.1:8080`). If changing post-installation, re-run the installer to update shortcuts with the new port.
-
----
-
-# Configuration
-
-## Environment Variables (Unix)
-
-| Variable                  | Description                 | Default                                                                                                             |
-| ------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `BACKREST_PORT`           | Port to bind to             | 127.0.0.1:9898 (or 0.0.0.0:9898 for the docker images)                                                              |
-| `BACKREST_CONFIG`         | Path to config file         | `$HOME/.config/backrest/config.json`<br>(or, if `$XDG_CONFIG_HOME` is set, `$XDG_CONFIG_HOME/backrest/config.json`) |
-| `BACKREST_DATA`           | Path to the data directory  | `$HOME/.local/share/backrest`<br>(or, if `$XDG_DATA_HOME` is set, `$XDG_DATA_HOME/backrest`)                        |
-| `BACKREST_RESTIC_COMMAND` | Path to restic binary       | Defaults to a Backrest managed version of restic at `$XDG_DATA_HOME/backrest/restic-x.x.x`                          |
-| `XDG_CACHE_HOME`          | Path to the cache directory |                                                                                                                     |
-
-## Environment Variables (Windows)
-
-| Variable                  | Description                 | Default                                                                                    |
-| ------------------------- | --------------------------- | ------------------------------------------------------------------------------------------ |
-| `BACKREST_PORT`           | Port to bind to             | 127.0.0.1:9898                                                                             |
-| `BACKREST_CONFIG`         | Path to config file         | `%appdata%\backrest\config.json`                                                           |
-| `BACKREST_DATA`           | Path to the data directory  | `%appdata%\backrest\data`                                                                  |
-| `BACKREST_RESTIC_COMMAND` | Path to restic binary       | Defaults to a Backrest managed version of restic in `C:\Program Files\restic\restic-x.x.x` |
-| `XDG_CACHE_HOME`          | Path to the cache directory |                                                                                            |
-
-
-# Development
-
-## Contributing
-
-Contributions are welcome! See the [issues](https://github.com/garethgeorge/backrest/issues) or feel free to open a new issue to discuss a project. Beyond the core codebase, contributions to [documentation](https://garethgeorge.github.io/backrest/introduction/getting-started), [cookbooks](https://garethgeorge.github.io/backrest/cookbooks/command-hook-examples), and testing are always welcome.
-
-## Build Dependencies
-
-All build dependencies are defined in `shell.nix` and can be activated automatically using [Nix](https://nixos.org/) and [direnv](https://direnv.net/).
-
-### Using Nix + direnv (Recommended)
-
-1. Install [Nix](https://nixos.org/download/) and [direnv](https://direnv.net/docs/installation.html)
-2. [Hook direnv into your shell](https://direnv.net/docs/hook.html) (e.g. `eval "$(direnv hook bash)"` in your `.bashrc`)
-3. Clone the repo and `cd` into it
-4. Run `direnv allow` to trust the `.envrc` — all dependencies (Go, Node.js, pnpm, protoc, buf, etc.) will be available in your shell automatically
-
-### Manual Setup
-
-If you prefer not to use Nix, install the following manually:
-
-- [Go](https://go.dev/) 1.24 or greater
-- [Node.js](https://nodejs.org/en) 20.x and [pnpm](https://pnpm.io/) 9
-- [goreleaser](https://github.com/goreleaser/goreleaser) `go install github.com/goreleaser/goreleaser/v2@latest`
-
-**(Optional) To edit protobuf definitions:**
-
-```sh
-apt install -y protobuf-compiler
-go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-go install github.com/bufbuild/buf/cmd/buf@latest
-go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest
-npm install -g @bufbuild/protoc-gen-es
-```
-
-## Compiling
-
-```sh
-(cd webui && pnpm i && pnpm run build)
-(cd cmd/backrest && go build .)
-```
-
-## Using VSCode Dev Containers
-
-The dev container uses Nix and direnv to provide all dependencies. When the container starts, `direnv allow` runs automatically so the Nix shell is activated in every terminal.
-
-0. Make sure Docker and VSCode with the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension is installed
-1. Clone this repository
-2. Open this folder in VSCode
-3. When prompted, click on `Open in Container` button, or run `> Dev Containers: Rebuild and Reopen in Containers` command
-4. When the container is started, go to `Run and Debug`, choose `Debug Backrest (backend+frontend)` and run it
-
-> [!NOTE]
-> Provided launch configuration has hot reload for the typescript frontend.
-
-## Translations
-
-Translations are stored in [./webui/messages](./webui/messages) and are generated using [inlang](https://inlang.com/). Machine translations can be updated by running `npx @inlang/cli machine translate --project ./project.inlang`. 
-
-Text is translated on a best-effort basis and is not guaranteed to be accurate. If you find any translations that are incorrect, please submit a pull request to fix them. Contributions here are greatly appreciated!
+GPL-3.0, like Backrest (`LICENSE`, `NOTICE`). Backrest © Gareth George and
+contributors. restic is BSD-2-Clause. Relyper Backup is not affiliated with
+or endorsed by the Backrest or restic projects.
