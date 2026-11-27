@@ -69,11 +69,11 @@ session (JWT) is never accepted on `/mcp`.
 
 | Scope | Tools |
 |---|---|
-| `status:read` | get_system_overview, get_backup_status, list_repositories, get_repository_status, list_backup_plans, get_backup_plan, list_snapshots, get_snapshot_details, list_backup_operations, get_backup_operation, get_backup_errors, get_storage_usage, validate_backup_configuration, create_backup_recommendations, get_approval_request |
+| `status:read` | get_system_overview, get_backup_status, list_repositories, get_repository_status, list_backup_plans, get_backup_plan, list_snapshots, get_snapshot_details, list_backup_operations, get_backup_operation, get_backup_errors, get_storage_usage, validate_backup_configuration, create_backup_recommendations, get_approval_request, discover_apps, get_backup_coverage, get_recovery_readiness, get_recovery_report, get_verification_results, propose_app_backup_plan |
 | `contents:browse` | list_snapshot_files (names only, never file contents) |
 | `repos:manage` | create_repository, update_repository, test_repository_connection, create_sftp_key, scan_sftp_host_keys, test_sftp_connection, trust_sftp_host_key (approval) |
-| `plans:manage` | create_backup_plan, update_backup_plan, enable_backup_plan, disable_backup_plan, delete_backup_plan (approval) |
-| `backups:run` | run_backup, run_repository_check, run_repository_stats, cancel_backup_operation |
+| `plans:manage` | create_app_backup_plan, create_backup_plan, update_backup_plan, enable_backup_plan, disable_backup_plan, delete_backup_plan (approval) |
+| `backups:run` | run_backup, run_repository_check, run_repository_stats, cancel_backup_operation, dump_app_databases, verify_app_databases, run_restore_test |
 | `restore` | restore_snapshot (approval) |
 | `data:delete` | delete_snapshot, prune_repository, modify_retention_policy, delete_repository (all approval) |
 
@@ -97,6 +97,24 @@ A typical conversation for an SFTP storage box:
 6. `create_backup_plan` – paths, excludes, schedule (cron, every N days or
    hours), retention.
 7. `run_backup`, then `get_backup_status` / `validate_backup_configuration`.
+
+For Docker apps (needs the Docker connection from `DEPLOYMENT.md`):
+
+1. `discover_apps` – containers grouped into apps (Compose project, Swarm
+   stack, Easypanel project or single container) with volumes, bind mounts
+   and detected databases.
+2. `get_backup_coverage` – per app and data item: protected, stale, failing,
+   not in a snapshot yet, unprotected, not reachable. It is based on
+   completed snapshots, not on the configuration alone.
+3. `propose_app_backup_plan`, then `create_app_backup_plan` with a
+   repository – one plan per app: a hook dumps the databases right before
+   every backup (a failed dump fails the backup), and the plan backs up the
+   dumps plus the app's files.
+4. `run_backup`, then `verify_app_databases` (restores the dumps from the
+   snapshot into a throwaway container and compares tables/collections/keys)
+   and `run_restore_test` (restores sample files and checks their sizes).
+5. `get_recovery_readiness` and `get_recovery_report` (Markdown runbook
+   without passwords).
 
 S3, B2, Azure, Google Cloud Storage, rest-server, Swift, rclone and local
 repositories work the same way, with credentials passed as environment
@@ -125,9 +143,11 @@ Not offered through MCP:
 
 - **Overwriting existing files on restore** (`overwrite_existing_files`):
   restores always go into a new directory, like in the web UI.
-- `stop_container` / `restart_container` and all Docker, Easypanel and
-  database tools: they need the discovery of Phases 3–4 and are not
-  registered until those features exist.
+- Starting, stopping or restarting app containers, and restoring a database
+  dump into a running production database: Relyper Backup only reads from
+  production containers (dumps) and restores into throwaway test
+  containers. Restoring production is a manual step described in the
+  recovery report.
 - Shell commands, raw restic commands, hook commands, and restic flags or
   environment variables that can run programs (`--password-command`,
   `RESTIC_PASSWORD_COMMAND`, `sftp.command`, `--files-from`, …). Only listed

@@ -33,9 +33,16 @@ the plain restic CLI, without Relyper Backup.
 - Optional sign-in with Relyper Identity (OIDC) for the web UI and AI app
   connections; local users stay as emergency access (`IDENTITY.md`).
 
-Planned (not built yet): roles in the web UI, Docker/Easypanel discovery,
-database dumps, backup coverage and guided disaster recovery. See
-`ROADMAP.md`.
+- **Application-aware backup** for Docker hosts: discovers Compose
+  projects, Swarm stacks and Easypanel projects, dumps PostgreSQL, MySQL,
+  MariaDB, MongoDB and Redis before every backup, shows which data a
+  completed snapshot really protects, tests database and file restores
+  automatically and writes a recovery report (`docker-compose.apps.yml`).
+- **Notifications** when protection gets worse or a restore test fails
+  (ntfy, Telegram, e-mail, Slack, … via `RELYPER_NOTIFY_URLS`).
+
+Planned (not built yet): roles for the Backrest pages, an Easypanel
+template, guided production restores. See `ROADMAP.md`.
 
 ## Quick start
 

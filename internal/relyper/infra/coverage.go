@@ -25,6 +25,7 @@ const (
 	StateNotReachable  = "not_reachable"   // the data is not mounted into Relyper Backup
 	StateRemote        = "remote"          // runs on another Swarm node
 	StateViaDump       = "covered_by_dump" // live database files; the dump is what counts
+	StateNoData        = "no_data"         // app without volumes, bind mounts or databases
 )
 
 // CoverageItem is one volume, bind mount or database of an app.
@@ -62,7 +63,7 @@ type CoverageReport struct {
 }
 
 var stateRank = map[string]int{
-	StateProtected: 0, StateViaDump: 0, StateRemote: 1, StateStale: 2, StateNotInSnapshot: 3, StateDisabled: 4, StateFailing: 5, StateNotReachable: 6, StateUnprotected: 7,
+	StateNoData: 0, StateProtected: 0, StateViaDump: 0, StateRemote: 1, StateStale: 2, StateNotInSnapshot: 3, StateDisabled: 4, StateFailing: 5, StateNotReachable: 6, StateUnprotected: 7,
 }
 
 var hookRe = regexp.MustCompile(`dump --dir '([^']+)' '([^']+)'`)
@@ -291,7 +292,7 @@ func (s *Service) Coverage(ctx context.Context) (*CoverageReport, error) {
 			}
 		}
 		if len(ac.Items) == 0 {
-			ac.State = StateProtected
+			ac.State = StateNoData
 			ac.Notes = append(ac.Notes, "no volumes, bind mounts or databases: nothing to back up")
 		}
 		rep.Apps = append(rep.Apps, ac)

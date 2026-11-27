@@ -100,6 +100,7 @@ type Service struct {
 	invAt    time.Time
 	busy     map[string]bool // app or plan IDs with a running verification
 	lastNote map[string]time.Time
+	notified map[string]string // app ID -> coverage state last notified
 }
 
 // New creates the service. Docker is optional: without it, discovery reports
@@ -109,7 +110,7 @@ func New(d Deps, s Settings) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	svc := &Service{d: d, s: s, store: st, busy: map[string]bool{}, lastNote: map[string]time.Time{}}
+	svc := &Service{d: d, s: s, store: st, busy: map[string]bool{}, lastNote: map[string]time.Time{}, notified: map[string]string{}}
 	if c, err := docker.New(s.DockerEndpoint); err == nil {
 		svc.docker = c
 	} else {

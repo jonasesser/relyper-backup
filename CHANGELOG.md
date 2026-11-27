@@ -28,6 +28,15 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
   page, with roles from the provider (`backup_admin` approves MCP requests
   and manages tokens); local users stay as emergency access. See
   `IDENTITY.md`. (#18)
+- Docker discovery (Compose, Swarm, Easypanel, single containers) and
+  database dumps for PostgreSQL, MySQL, MariaDB, MongoDB and Redis with
+  `relyper-dbdump`, verified by restoring into a throwaway container. (#20)
+- Backup coverage based on completed snapshots, app backup plans with a dump
+  hook, automatic database and file restore tests, recovery readiness,
+  Markdown recovery report, notifications (`RELYPER_NOTIFY_URLS`) and the
+  matching MCP tools. (#21)
+- Web UI page "Infrastructure"; `docker-compose.apps.yml` with a filtering
+  Docker socket proxy. (#22)
 
 ### Changed
 

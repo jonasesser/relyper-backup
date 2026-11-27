@@ -68,9 +68,20 @@ https://github.com/garethgeorge/backrest/security.
   read all backups. Encrypted secret storage is planned.
 - **No roles in the web UI.** Viewing status and deleting backups need the same login, and every web UI user can create MCP tokens and approve MCP requests. MCP credentials themselves are scoped.
 - **MCP exposure.** Connecting claude.ai or ChatGPT requires the instance to be reachable from the internet. The OAuth consent page accepts the web UI password; use a strong password. A repository password given to `create_repository` passes through the AI provider.
-- **Docker socket.** Mounting it gives root on the host, even with `:ro`. Do
-  not mount it unless you need hooks or discovery that require it; prefer a
-  filtering socket proxy. See `DEPLOYMENT.md`.
+- **Docker access.** Mounting the socket gives root on the host, even with
+  `:ro`. Application-aware backup needs more than read access: it runs the
+  dump tools inside database containers (`exec`) and creates, starts and
+  removes throwaway restore-test containers. `docker-compose.apps.yml` puts a
+  filtering socket proxy in between that blocks images, networks, secrets,
+  configs, plugins, build and system endpoints, but whoever controls Relyper
+  Backup can still run commands in your containers. Treat admin access to
+  Relyper Backup like root on the Docker host. Relyper Backup itself only
+  runs fixed dump/restore commands, never commands from the UI or MCP
+  clients; app IDs are validated, and it only removes containers labelled
+  `relyper.verify=true`.
+- **Database credentials** stay inside the database containers: the dump
+  runs there and reads the password from the container's own environment or
+  `*_FILE` secret. Relyper Backup does not store or log them.
 - **Hook commands** run arbitrary shell commands inside the container by
   design. Anyone who can edit plans can run commands.
 
@@ -90,7 +101,8 @@ the checks it makes and its limits.
 - [ ] First user created before the port is reachable from other machines.
 - [ ] UI only via HTTPS; ideally only via VPN or behind SSO.
 - [ ] Source mounts read-only; restores go to `/restore`.
-- [ ] Docker socket not mounted (or only through a read-only filtering proxy).
+- [ ] Docker socket not mounted directly; only through the filtering proxy
+      of `docker-compose.apps.yml`, on an internal network.
 - [ ] `/config` backed up offline; repository passwords stored outside the
       host (password manager). See `DISASTER-RECOVERY.md`.
 - [ ] At least one backup copy the instance cannot delete.

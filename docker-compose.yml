@@ -32,10 +32,9 @@ services:
       - /srv:/sources/srv:ro
       # Optional: local restic repository (prefer remote storage such as SFTP).
       # - /mnt/backup-disk/restic:/repos
-      # Optional and privileged: Docker socket for hook scripts and the
-      # planned Docker discovery. Access to the socket equals root on the
-      # host, even with :ro. See DEPLOYMENT.md.
-      # - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Docker discovery and database dumps: use docker-compose.apps.yml,
+      # which adds a filtering socket proxy. Do not mount the raw socket;
+      # access to it equals root on the host, even with :ro.
 
 volumes:
   relyper-config:

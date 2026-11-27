@@ -222,7 +222,7 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 	}
 	seenSwarm := map[string]bool{}
 	for _, c := range containers {
-		if c.Labels[docker.VerifyLabel] == "true" || isSelf(c.ID, opt.SelfID) || isEasypanelImage(c.Image) {
+		if c.Labels[docker.VerifyLabel] == "true" || isSelf(c.ID, c.Name(), opt.SelfID) || isEasypanelImage(c.Image) {
 			continue
 		}
 		svc := Service{
@@ -290,8 +290,14 @@ func appendOnce(list []string, s string) []string {
 	return append(list, s)
 }
 
-func isSelf(id, self string) bool {
-	return self != "" && len(self) >= 12 && strings.HasPrefix(id, self)
+// isSelf matches Relyper Backup's own container by ID prefix (the default
+// hostname) or by name (a hostname set to the container name, as in the
+// compose files, or RELYPER_SELF_CONTAINER).
+func isSelf(id, name, self string) bool {
+	if self == "" {
+		return false
+	}
+	return name == self || (len(self) >= 12 && strings.HasPrefix(id, self))
 }
 
 func isSocket(p string) bool {

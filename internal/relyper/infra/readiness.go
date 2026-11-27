@@ -124,6 +124,8 @@ func (s *Service) Readiness(ctx context.Context) (*ReadinessReport, error) {
 		add := func(name, status, detail string) { ar.Checks = append(ar.Checks, Check{name, status, detail}) }
 		// 1. Coverage.
 		switch ac.State {
+		case StateNoData:
+			add("backup", "ok", "the app keeps no data outside its image")
 		case StateProtected, StateViaDump, StateRemote:
 			add("backup", "ok", fmt.Sprintf("all data is in a snapshot younger than %d hours", cov.MaxAgeHours))
 		case StateStale, StateNotInSnapshot, StateDisabled:

@@ -83,6 +83,13 @@ The `BACKREST_*` names are kept from upstream so existing Backrest
 configurations and documentation keep working.
 
 | `RELYPER_OIDC_*` | unset | Sign-in with Relyper Identity; see `IDENTITY.md`. |
+| `RELYPER_DOCKER_HOST` | `DOCKER_HOST`, else `unix:///var/run/docker.sock` | Docker API for discovery, dumps and restore tests (`unix://` or `tcp://`). |
+| `RELYPER_HOST_PATH_MAP` | unset | Host paths mounted elsewhere in the container, e.g. `/srv=/sources/srv,/opt/data=/sources/opt`. |
+| `RELYPER_DUMP_DIR` | `<data>/relyper/dumps` | Where database dumps are written before the backup. |
+| `RELYPER_COVERAGE_MAX_AGE_HOURS` | `48` | A snapshot older than this counts as stale. |
+| `RELYPER_VERIFY_INTERVAL_DAYS` | `7` | Automatic database and file restore tests; `0` turns them off. |
+| `RELYPER_NOTIFY_URLS` | unset | Notification targets as [shoutrrr URLs](https://shoutrrr.nickfedor.com/), separated by spaces. |
+| `RELYPER_SELF_CONTAINER` | the hostname | Name or ID of Relyper Backup's own container, excluded from discovery. |
 | `RELYPER_PUBLIC_URL` | unset | Public HTTPS address, e.g. `https://backup.example.com`. Used in the OAuth metadata of the MCP server; without it the address is derived from the request headers. |
 
 The MCP endpoint `/mcp` and the OAuth endpoints (`/.well-known/oauth-*`,
@@ -122,16 +129,84 @@ Easypanel is the primary target. Create an **App** service:
 6. **Hostname:** keep the service name stable. restic stores the hostname in
    every snapshot, and Backrest uses it to match snapshots to plans.
 
-Where Easypanel keeps the data of other projects on the host (volumes,
-`/etc/easypanel`) has to be verified on the actual server before it is
-mounted; Relyper Backup does not assume any path yet. Automatic Easypanel
-discovery is planned for Phase 3.
+For application-aware backup of the other Easypanel projects, add the
+Docker connection and mounts described in "Application-aware backup" below.
+Easypanel runs services as Swarm services named `<project>_<service>` and
+keeps bind-mounted data under `/etc/easypanel/projects/<project>/<service>/`;
+Relyper Backup groups apps by these conventions. They have not yet been
+checked on a real Easypanel server – look at the Infrastructure page after
+the first start and report anything that is grouped wrongly.
+
+## Application-aware backup (Docker apps and databases)
+
+Use `docker-compose.apps.yml` instead of `docker-compose.yml`:
+
+```bash
+docker compose -f docker-compose.apps.yml up -d --build
+```
+
+It adds three things:
+
+1. **A Docker socket proxy** (`tecnativa/docker-socket-proxy`) on an internal
+   network. Relyper Backup reaches Docker only through it
+   (`RELYPER_DOCKER_HOST=tcp://docker-proxy:2375`). Allowed: reading
+   containers, volumes, services, tasks, nodes and system info; `exec`
+   (database dumps); creating, starting and removing containers (restore
+   tests). Blocked: images, networks, secrets, configs, plugins, build,
+   system. On hosts without IPv6 in Docker keep `DISABLE_IPV6=1`, otherwise
+   the proxy does not start.
+2. **Docker volumes at their real path**, read-only:
+   `/var/lib/docker/volumes:/var/lib/docker/volumes:ro`. Plans use the paths
+   Docker reports, so they must exist at the same path inside the container.
+3. **Bind-mounted app data**, read-only, either at the same path or mapped
+   with `RELYPER_HOST_PATH_MAP` (the file maps `/srv` to `/sources/srv`).
+   Data that is not mounted shows as "not reachable" on the Infrastructure
+   page. For Easypanel add `/etc/easypanel/projects:/etc/easypanel/projects:ro`.
+
+Then open **Infrastructure** in the web UI (or use `discover_apps` through
+MCP), pick an app, choose a repository and create its backup plan. The plan:
+
+- runs `relyper-dbdump` as a hook right before every backup; it dumps each
+  database inside its own container with the engine's tool, so the database
+  password never leaves that container; a failed dump fails the backup;
+- backs up the dump directory and the app's volumes and bind mounts, without
+  the live database files;
+- runs daily at 02:30 and keeps 7 daily, 4 weekly and 6 monthly snapshots
+  (change it on the plan page).
+
+Restore tests run weekly (`RELYPER_VERIFY_INTERVAL_DAYS`) and on demand. A
+database restore test starts a container from the database's own image
+without network, labelled `relyper.verify=true`, restores the dump from the
+snapshot, compares the counts and removes the container again; the image
+must be present on the host.
+
+Limits:
+
+- Swarm services running on other nodes are listed as `remote`; their
+  volumes are only reachable on their own node.
+- Databases are detected by image name (postgres, mysql, mariadb, mongo,
+  redis and common variants such as bitnami or postgis). Others are backed
+  up as files only.
+- `RELYPER_DUMP_DIR` must be inside the container's own storage (default
+  `/data/relyper/dumps`); the dumps take as much space as the databases.
+
+### Notifications
+
+Set `RELYPER_NOTIFY_URLS` to one or more
+[shoutrrr](https://shoutrrr.nickfedor.com/) URLs, separated by spaces, for
+example `ntfy://ntfy.sh/<topic>`, `telegram://<token>@telegram?chats=<id>`
+or `smtp://user:pass@host:587/?from=a@example.com&to=b@example.com`.
+Relyper Backup sends a message when the coverage of an app with a plan
+becomes stale, failing or unprotected, when it is protected again, and when
+a database or file restore test fails. After a restart an open problem is
+reported once more. The URLs contain
+secrets; they are never shown in the UI or logs.
 
 ## Privileged options and their risk
 
 | Option | What it allows | Risk |
 |---|---|---|
-| Docker socket (`/var/run/docker.sock`), even `:ro` | hook scripts using `docker`, the planned Docker discovery | The Docker API can start privileged containers that mount the host's root filesystem. **Access to the socket is equivalent to root on the host**, the `:ro` flag on the socket file does not restrict the API. Prefer a filtering socket proxy that only allows read endpoints (`GET /containers`, `/volumes`, `/networks`, `/services`). |
+| Docker socket (`/var/run/docker.sock`), even `:ro` | hook scripts using `docker`; discovery, dumps and restore tests (use the proxy of `docker-compose.apps.yml`) | The Docker API can start privileged containers that mount the host's root filesystem. **Access to the socket is equivalent to root on the host**, the `:ro` flag on the socket file does not restrict the API. Never mount it directly; use the filtering proxy, which still allows `exec` and container creation (see above). |
 | Broad read-only host mount | backing up arbitrary host paths | Every admin of Relyper Backup can read every mounted file, including secrets on the host. |
 | Writable production mounts | restoring in place | A wrong restore or a compromised instance can overwrite production data. Restore to `/restore` instead. |
 | `privileged: true`, `cap_add` | not needed | Not required by any feature. Do not use. |

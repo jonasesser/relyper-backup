@@ -118,6 +118,9 @@ func TestPathMapAndIDs(t *testing.T) {
 	if _, err := PathMapFromEnv(); err == nil {
 		t.Fatal("relative path accepted")
 	}
+	if !isSelf("f00d", "relyper-backup", "relyper-backup") || isSelf("f00d", "web", "relyper-backup") || isSelf("f00d", "web", "") {
+		t.Error("isSelf")
+	}
 	if (Options{Exists: func(string) bool { return true }}).LocalPath("") != "" {
 		t.Error("an empty mount source must not map to the working directory")
 	}

@@ -1,0 +1,83 @@
+# Relyper Backup – Docker Compose deployment with application-aware backup
+# (Docker discovery, database dumps, coverage and restore tests).
+#
+#   docker compose -f docker-compose.apps.yml up -d --build
+#   open http://<host>:9898, create the admin user, then open "Infrastructure"
+#
+# Relyper Backup talks to Docker through a filtering socket proxy instead of
+# the raw socket. Read "Application-aware backup" in DEPLOYMENT.md first:
+# the proxy still allows starting containers and running commands in them,
+# which is what database dumps and restore tests need.
+
+services:
+  relyper-backup:
+    build: .
+    image: relyper-backup:latest
+    container_name: relyper-backup
+    # restic records the hostname in every snapshot; keep it stable. It also
+    # tells Relyper Backup which container is its own (not listed as an app).
+    hostname: relyper-backup
+    restart: unless-stopped
+    stop_grace_period: 2m
+    depends_on:
+      - docker-proxy
+    ports:
+      - "9898:9898"
+    environment:
+      TZ: Europe/Berlin
+      RELYPER_DOCKER_HOST: tcp://docker-proxy:2375
+      # Host paths that are mounted at a different path inside this
+      # container, as host=container pairs separated by commas.
+      RELYPER_HOST_PATH_MAP: /srv=/sources/srv
+      # Optional: notifications when protection gets worse or a test fails
+      # (shoutrrr URLs, separated by spaces), e.g. ntfy, Telegram, e-mail.
+      # RELYPER_NOTIFY_URLS: "ntfy://ntfy.sh/my-backup-topic"
+      # RELYPER_PUBLIC_URL: https://backup.example.com
+    volumes:
+      - relyper-config:/config
+      - relyper-data:/data # also holds the database dumps (/data/relyper/dumps)
+      - relyper-cache:/cache
+      - ./restore:/restore
+      # Docker volumes at their real host path, read-only, so plans can
+      # name the same paths that Docker reports.
+      - /var/lib/docker/volumes:/var/lib/docker/volumes:ro
+      # Bind-mounted app data under /srv (see RELYPER_HOST_PATH_MAP).
+      - /srv:/sources/srv:ro
+      # Easypanel only: project data at its real host path, read-only.
+      # - /etc/easypanel/projects:/etc/easypanel/projects:ro
+    networks:
+      - default
+      - docker-api
+
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:v0.4.1
+    restart: unless-stopped
+    environment:
+      # Read access for discovery.
+      INFO: 1
+      CONTAINERS: 1
+      VOLUMES: 1
+      SERVICES: 1 # Swarm / Easypanel
+      TASKS: 1
+      NODES: 1
+      # Write access: exec for database dumps, create/start/remove of
+      # throwaway restore-test containers. Images, networks, secrets,
+      # configs, plugins, system and build stay blocked.
+      EXEC: 1
+      POST: 1
+      # Remove this line on hosts with IPv6 enabled in Docker.
+      DISABLE_IPV6: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-api
+
+networks:
+  # Internal network: only Relyper Backup can reach the proxy.
+  docker-api:
+    internal: true
+
+volumes:
+  relyper-config:
+  relyper-data:
+  relyper-cache:

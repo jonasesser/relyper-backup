@@ -83,3 +83,16 @@ func TestEvaluate(t *testing.T) {
 	plan.Schedule = &v1.Schedule{Schedule: &v1.Schedule_Disabled{Disabled: true}}
 	check("disabled", planRun{snapshot: snap}, "/srv/a", StateDisabled)
 }
+
+func TestCoverageChange(t *testing.T) {
+	s := &Service{notified: map[string]string{}}
+	steps := []struct {
+		state string
+		want  bool
+	}{{StateProtected, false}, {StateStale, true}, {StateStale, false}, {StateFailing, true}, {StateProtected, true}, {StateProtected, false}}
+	for i, st := range steps {
+		if subj, _ := s.coverageChange("compose:shop", "shop", st.state); (subj != "") != st.want {
+			t.Errorf("step %d (%s): %q", i, st.state, subj)
+		}
+	}
+}

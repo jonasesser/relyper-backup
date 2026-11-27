@@ -1,8 +1,10 @@
 # Disaster recovery
 
-This document covers what works **today**. Guided recovery workflows, recovery
-inventories and automated restore tests are planned (Phase 5 in
-`ROADMAP.md`) and are not implemented yet.
+This document covers recovery with and without Relyper Backup. For Docker
+apps, the Infrastructure page (or the MCP tool `get_recovery_report`)
+produces a recovery report for your actual setup: repositories, apps, images,
+data paths, test results and the restore commands. Download it regularly and
+keep it next to the repository password, outside the protected host.
 
 ## The one rule
 
@@ -77,15 +79,31 @@ byte-identical to the source (#13).
 ## Databases
 
 Copying a live database directory does **not** produce a reliable backup.
-Until database support (Phase 4) exists, dump databases with their own tools
-into a directory that a plan backs up, for example from a plan hook or a cron
-job on the host:
+An app backup plan (Infrastructure page → "Create backup plan", or
+`create_app_backup_plan`) dumps PostgreSQL, MySQL, MariaDB, MongoDB and Redis
+with their own tools right before every backup; a failed dump fails the
+backup. The dumps of an app are in the snapshot under
+`/data/relyper/dumps/<app>/`, together with `relyper-dumps.json` (engine,
+image, checksum, expected tables/collections/keys).
 
-```bash
-docker exec postgres pg_dumpall -U postgres | gzip > /srv/db-dumps/postgres.sql.gz
-```
+Restoring a dump by hand, with the image listed in the manifest:
 
-and check regularly that the dump can be restored into a throwaway container.
+| Engine | File | Restore |
+|---|---|---|
+| PostgreSQL | `<service>.sql` (pg_dumpall) | `psql -U <user> -d postgres -f <service>.sql` |
+| MySQL / MariaDB | `<service>.sql` | `mysql -u root -p < <service>.sql` (or `mariadb`) |
+| MongoDB | `<service>.archive.gz` | `mongorestore --archive=<service>.archive.gz --gzip --drop` |
+| Redis | `<service>.rdb` | stop Redis, copy the file to `/data/dump.rdb`, start Redis |
+
+Relyper Backup tests this automatically: "Test database restore" (and the
+weekly schedule, `RELYPER_VERIFY_INTERVAL_DAYS`) restores the dumps from the
+latest snapshot into a throwaway container without network and compares the
+counts with the manifest. It never restores into a running production
+database.
+
+Databases that are not detected (SQLite inside an app volume, other
+engines) are backed up as files only; stop the app or dump them from your own
+hook if you need consistency.
 
 ## Docker secrets and other non-exportable credentials
 
@@ -95,7 +113,18 @@ in your password manager or deployment repository.
 
 ## Verifying recoverability
 
-A successful backup is not proof that a restore works. Today:
+A successful backup is not proof that a restore works. Relyper Backup
+checks, per app (Infrastructure page → Readiness):
+
+- coverage: every data item is in a completed snapshot younger than
+  `RELYPER_COVERAGE_MAX_AGE_HOURS` (48);
+- database restore test (see above), at most 14 days old;
+- file restore test: sample files restored from the latest snapshot into a
+  temporary directory and compared by size;
+- repository check (`restic check`) at most 35 days old;
+- an off-site repository (not a local path).
+
+Problems are sent to `RELYPER_NOTIFY_URLS` when they appear. In addition:
 
 - schedule `restic check` for every repository (repository settings → check
   policy); consider "read data subset" from time to time;
@@ -103,4 +132,5 @@ A successful backup is not proof that a restore works. Today:
 - for SFTP storage, also confirm the provider quota is not close to full
   (the connection test shows free space when the server reports it).
 
-Automated restore tests and recovery readiness reporting are planned.
+The file restore test compares sizes, not contents; `restic check
+--read-data-subset` covers the data itself.

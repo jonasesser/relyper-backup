@@ -52,3 +52,22 @@ func (s *Service) SendTestNotification() (targets, failures int) {
 	}
 	return len(s.s.NotifyURLs), failures
 }
+
+// coverageChange returns the notification for an app whose coverage became
+// a problem or recovered since the last call, or "" when nothing changed.
+// The state is kept in memory, so a problem is reported once more after a
+// restart.
+func (s *Service) coverageChange(appID, name, state string) (subject, body string) {
+	s.mu.Lock()
+	prev, seen := s.notified[appID]
+	s.notified[appID] = state
+	s.mu.Unlock()
+	bad := func(st string) bool { return stateRank[st] >= stateRank[StateStale] }
+	switch {
+	case bad(state) && state != prev:
+		return "Relyper Backup: " + name + " is " + state, "App " + appID + " coverage: " + state + ". Open the Infrastructure page for details."
+	case seen && bad(prev) && !bad(state):
+		return "Relyper Backup: " + name + " is protected again", "App " + appID + " coverage: " + state + "."
+	}
+	return "", ""
+}

@@ -71,8 +71,11 @@ func (s *Service) tick(ctx context.Context) {
 	if len(s.s.NotifyURLs) > 0 {
 		if cov, err := s.Coverage(ctx); err == nil {
 			for _, a := range cov.Apps {
-				if stateRank[a.State] >= stateRank[StateStale] && len(a.Plans) > 0 {
-					s.notify("Relyper Backup: "+a.Name+" is "+a.State, "App "+a.App+" coverage: "+a.State+". Open the Infrastructure page for details.")
+				if len(a.Plans) == 0 {
+					continue
+				}
+				if subject, body := s.coverageChange(a.App, a.Name, a.State); subject != "" {
+					s.notify(subject, body)
 				}
 			}
 		}

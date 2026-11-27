@@ -40,6 +40,7 @@ export const stateColor: Record<string, string> = {
   ready: "green",
   ok: "green",
   remote: "gray",
+  no_data: "gray",
   stale: "orange",
   not_in_snapshot: "orange",
   disabled: "orange",
@@ -59,6 +60,7 @@ const stateLabel: Record<string, string> = {
   not_reachable: "not reachable",
   at_risk: "at risk",
   not_ready: "not ready",
+  no_data: "no data",
 };
 
 // Anonymous volumes carry a 64-hex name; bind mounts repeat their path.

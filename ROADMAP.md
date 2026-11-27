@@ -47,42 +47,49 @@ Details: `MCP.md`.
 | MCP page in the web UI | done | #17 – connect, approvals, tokens, audit log |
 | Roles and permissions for web UI users | open | Today every web UI user can create tokens and approve requests |
 | Tested with claude.ai / ChatGPT connectors | open | Needs a publicly reachable instance |
-| Docker, Easypanel, database and container tools | open | With Phases 3–4; not registered before they exist |
+| Docker, database, coverage and recovery tools | done | #21 – discovery, coverage, app plans, dumps, restore tests, readiness, report |
+| Container start/stop/restart tools | not planned | Relyper Backup only reads from production containers |
 
-## Phase 3 – Infrastructure discovery (open)
+## Phase 3 – Infrastructure discovery (done, Easypanel unverified)
 
-- Docker discovery via the Engine API, read-only, behind a filtering socket
-  proxy where possible.
-- Docker Swarm services and volumes.
-- Easypanel projects – paths and conventions verified on a real host first.
-- Application-level backup selection (one app = its volumes + database).
-- Coverage analysis based on completed backups, not configuration alone.
+| Item | Status | Notes |
+|---|---|---|
+| Docker discovery via the Engine API | done | #20 – stdlib client, unix socket or a filtering socket proxy (`docker-compose.apps.yml`) |
+| Apps: Compose projects, Swarm stacks, single containers | done | #20 |
+| Easypanel projects | partial | #20 – detected from `/etc/easypanel/projects` paths and `<project>_<service>` names; not yet checked on a real Easypanel server |
+| Swarm services on other nodes | partial | Listed as `remote`; their data is not reachable from this node |
+| App-level backup plan (volumes + dumps) | done | #21 – one plan per app, created in the web UI or through MCP |
+| Coverage based on completed snapshots | done | #21 – web UI page "Infrastructure", `get_backup_coverage` |
 
-## Phase 4 – Database protection (open)
+## Phase 4 – Database protection (done)
 
-- Database discovery (PostgreSQL, MySQL/MariaDB, Redis, …).
-- Consistent dumps with the databases' own tools into a staging directory,
-  then restic.
-- Application-aware workflows (dump, back up, clean up, report).
-- Restore and verification into a throwaway container.
+| Item | Status | Notes |
+|---|---|---|
+| Detection of PostgreSQL, MySQL, MariaDB, MongoDB, Redis | done | #20 – by image |
+| Consistent dumps with the databases' own tools | done | #20 – `relyper-dbdump`, run as a hook right before each backup; passwords stay inside the database container |
+| Dump manifest with checksums and counts | done | #20 |
+| Restore verification in a throwaway container | done | #20, #21 – from the snapshot, compares tables/collections/keys |
+| Other engines (SQLite inside app volumes, MSSQL, …) | open | SQLite files are backed up as files; no consistency guarantee |
 
-Until then, `DISASTER-RECOVERY.md` explains how to dump databases from a hook.
+## Phase 5 – Disaster recovery (done)
 
-## Phase 5 – Disaster recovery (open)
+| Item | Status | Notes |
+|---|---|---|
+| Automated restore tests | done | #21 – database restore weekly (`RELYPER_VERIFY_INTERVAL_DAYS`), file restore test of sample files |
+| Recovery readiness | done | #21 – per app: coverage, database test, file test, repository check, off-site copy |
+| Recovery report / runbook | done | #21 – Markdown, no passwords; restore commands for the plain restic CLI |
+| Notifications on problems | done | #21 – shoutrrr URLs (`RELYPER_NOTIFY_URLS`) |
+| Guided production restore of an app | open | Production restore stays a manual, documented step |
 
-- Recovery inventory (what is needed to rebuild, where it is).
-- Guided restore workflows.
-- Automated restore tests.
-- Recovery readiness reporting.
+## Phase 6 – Product refinement (partial)
 
-## Phase 6 – Product refinement (open)
-
-- Simpler repository and plan setup.
-- Dashboard and UX refinement.
-- Optional Relyper Identity (OIDC) – done (#18, `IDENTITY.md`). Still open:
-  roles for the Backrest pages themselves.
-- More notification channels.
-- Deployment templates (Easypanel template, compose variants).
+| Item | Status | Notes |
+|---|---|---|
+| Relyper Identity (OIDC) | done | #18, `IDENTITY.md`; roles for the Backrest pages still open |
+| Infrastructure page in the web UI | done | #22 |
+| Compose variant with Docker socket proxy | done | `docker-compose.apps.yml` |
+| Easypanel template | open | Needs a real Easypanel server to verify paths |
+| Dashboard redesign | open | |
 
 ## Open decisions
 
