@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
 	"encoding/pem"
 	"net"
 	"os"
@@ -31,7 +32,7 @@ type testServer struct {
 const testUser = "backup"
 const testPassword = "correct horse battery staple"
 
-func newTestServer(t *testing.T, clientKey ssh.PublicKey, noSFTP bool) *testServer {
+func newTestServer(t *testing.T, clientKey ssh.PublicKey, noSFTP bool, extraHostKeys ...ssh.Signer) *testServer {
 	t.Helper()
 	_, priv, _ := ed25519.GenerateKey(rand.Reader)
 	hostKey, err := ssh.NewSignerFromKey(priv)
@@ -53,6 +54,9 @@ func newTestServer(t *testing.T, clientKey ssh.PublicKey, noSFTP bool) *testServ
 		},
 	}
 	cfg.AddHostKey(hostKey)
+	for _, k := range extraHostKeys {
+		cfg.AddHostKey(k)
+	}
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -363,5 +367,42 @@ func TestValidateHost(t *testing.T) {
 		if d := validateHost(h); d == nil {
 			t.Errorf("%q accepted", h)
 		}
+	}
+}
+
+// Regression: a server offering several key types must pass the host key
+// check when only one of its types is trusted (OpenSSH behaves the same).
+func TestConnectionUsesTrustedKeyType(t *testing.T) {
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rsaSigner, _ := ssh.NewSignerFromKey(rsaKey)
+	clientKey, keyPath := newClientKey(t, t.TempDir())
+	srv := newTestServer(t, clientKey, false, rsaSigner)
+
+	for name, trusted := range map[string]ssh.PublicKey{"ed25519": srv.hostKey.PublicKey(), "rsa": rsaSigner.PublicKey()} {
+		t.Run(name, func(t *testing.T) {
+			kh := filepath.Join(t.TempDir(), "known_hosts")
+			line := "[" + srv.host + "]:" + strconv.Itoa(srv.port) + " " + string(ssh.MarshalAuthorizedKey(trusted))
+			os.WriteFile(kh, []byte(line), 0o600)
+			r := TestConnection(ctx(t), Options{Host: srv.host, Port: srv.port, User: testUser, IdentityFile: keyPath, KnownHostsPath: kh, Timeout: 5 * time.Second})
+			if !r.OK {
+				t.Fatalf("report error = %+v", r.Error)
+			}
+			keys, d := ScanHostKeys(ctx(t), srv.host, srv.port, kh, 5*time.Second)
+			if d != nil || len(keys) != 2 {
+				t.Fatalf("scan: keys=%d d=%v", len(keys), d)
+			}
+			for _, k := range keys {
+				want := KeyUnknown
+				if k.Type == trusted.Type() {
+					want = KeyTrusted
+				}
+				if k.Status != want {
+					t.Errorf("%s status = %v, want %v", k.Type, k.Status, want)
+				}
+			}
+		})
 	}
 }

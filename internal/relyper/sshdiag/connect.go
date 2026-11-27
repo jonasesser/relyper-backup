@@ -175,6 +175,10 @@ func TestConnection(ctx context.Context, o Options) *Report {
 	cfg := &ssh.ClientConfig{
 		User: o.User,
 		Auth: auth,
+		// Like OpenSSH, prefer the host key types already trusted for this
+		// host; otherwise the server may present a different key type and the
+		// check fails although a valid key is recorded.
+		HostKeyAlgorithms: knownAlgorithms(hostKeyCB, addr),
 		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 			hostKeyChecked = true
 			presented = key
@@ -188,6 +192,10 @@ func TestConnection(ctx context.Context, o Options) *Report {
 	if err != nil {
 		if hostKeyErr != nil {
 			d := Classify(hostKeyErr)
+			if d.Category == CategoryHostKeyMismatch && presented != nil && keyStatusFromErr(hostKeyErr, presented) == KeyUnknown {
+				// Only keys of other types are recorded: not a conflict.
+				d = &Diagnostic{Category: CategoryHostKeyUnknown, Message: "The server presented a " + presented.Type() + " host key; only other key types are trusted for this server.", Hint: "Fetch the host key and trust the matching key after comparing its fingerprint."}
+			}
 			if presented != nil {
 				d.Message += " Presented key: " + presented.Type() + " " + ssh.FingerprintSHA256(presented) + "."
 			}

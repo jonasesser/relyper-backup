@@ -269,7 +269,7 @@ export const SftpDiagnostics = ({
             directory and whether a repository already exists there.
           </Text>
           <Field
-            label="Password (optional)"
+            label="SSH password for this test (optional)"
             helperText="Only used for this test and never stored. Scheduled backups need key authentication."
           >
             <PasswordInput

@@ -13,6 +13,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"net"
@@ -166,7 +168,11 @@ func keyStatus(knownHostsPath, addr string, key ssh.PublicKey) KeyStatus {
 	if err != nil {
 		return KeyUnknown
 	}
-	err = cb(addr, fakeAddr(addr), key)
+	return keyStatusFromErr(cb(addr, fakeAddr(addr), key), key)
+}
+
+// keyStatusFromErr interprets the result of a knownhosts callback for key.
+func keyStatusFromErr(err error, key ssh.PublicKey) KeyStatus {
 	if err == nil {
 		return KeyTrusted
 	}
@@ -206,6 +212,48 @@ func fakeAddr(addr string) net.Addr {
 	host, portStr, _ := net.SplitHostPort(addr)
 	port, _ := strconv.Atoi(portStr)
 	return &net.TCPAddr{IP: net.ParseIP(host), Port: port}
+}
+
+// knownAlgorithms returns the host key algorithms matching the key types
+// recorded for addr, strongest first, or nil (library default) when none are
+// recorded.
+func knownAlgorithms(cb ssh.HostKeyCallback, addr string) []string {
+	types := map[string]bool{}
+	for _, k := range knownKeys(cb, addr) {
+		types[k.Type()] = true
+	}
+	var algos []string
+	for _, t := range []string{ssh.KeyAlgoED25519, ssh.KeyAlgoECDSA256, ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA521} {
+		if types[t] {
+			algos = append(algos, t)
+		}
+	}
+	if types[ssh.KeyAlgoRSA] {
+		algos = append(algos, ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256)
+	}
+	return algos
+}
+
+// knownKeys lists the keys recorded for addr by probing the callback with a
+// throwaway key: knownhosts reports the recorded keys in KeyError.Want.
+func knownKeys(cb ssh.HostKeyCallback, addr string) []ssh.PublicKey {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil
+	}
+	probe, err := ssh.NewSignerFromKey(priv)
+	if err != nil {
+		return nil
+	}
+	var keyErr *knownhosts.KeyError
+	if err := cb(addr, fakeAddr(addr), probe.PublicKey()); errors.As(err, &keyErr) {
+		var keys []ssh.PublicKey
+		for _, w := range keyErr.Want {
+			keys = append(keys, w.Key)
+		}
+		return keys
+	}
+	return nil
 }
 
 var knownHostsMu sync.Mutex
