@@ -32,6 +32,7 @@ import (
 	"github.com/garethgeorge/backrest/internal/oplog/sqlitestore"
 	"github.com/garethgeorge/backrest/internal/orchestrator"
 	"github.com/garethgeorge/backrest/internal/relyper/health"
+	"github.com/garethgeorge/backrest/internal/relyper/mcpapi"
 	"github.com/garethgeorge/backrest/internal/relyper/sftpapi"
 	"github.com/garethgeorge/backrest/internal/resticinstaller"
 	"github.com/garethgeorge/backrest/webui"
@@ -247,8 +248,14 @@ func newServer(
 	syncStateHandler := syncapi.NewBackrestSyncStateHandler(syncMgr)
 	downloadHandler := api.NewDownloadHandler(opLog, orch)
 
+	// relyper: native MCP server, OAuth endpoints and MCP management API
+	relyperRoutes, err := mcpapi.Setup(mcpapi.Deps{Config: configMgr, Orchestrator: orch, OpLog: opLog, LogStore: logStore, Backrest: apiBackrestHandler, Authenticator: authenticator, DataDir: env.DataDir(), SSHDir: env.SSHDir(), Version: version})
+	if err != nil {
+		zap.S().Errorf("MCP server disabled: %v", err) // relyper: backups keep working without MCP
+	}
+
 	// Routing
-	rootMux := newRootMux(apiBackrestHandler, apiAuthenticationHandler, syncHandler, syncStateHandler, downloadHandler, authenticator)
+	rootMux := newRootMux(apiBackrestHandler, apiAuthenticationHandler, syncHandler, syncStateHandler, downloadHandler, authenticator, relyperRoutes)
 
 	var handler http.Handler = rootMux
 	if version == "unknown" { // dev build, enable CORS for local development
@@ -268,6 +275,7 @@ func newRootMux(
 	syncStateHandler v1syncconnect.BackrestSyncStateServiceHandler,
 	downloadHandler http.Handler,
 	authenticator *auth.Authenticator,
+	relyperRoutes ...*mcpapi.Routes, // relyper
 ) *http.ServeMux {
 	// Authenticated routes
 	authedMux := http.NewServeMux()
@@ -286,6 +294,18 @@ func newRootMux(
 	unauthedMux.Handle(syncPath, syncHandlerUnauthed)
 	unauthedMux.Handle("/download/", http.StripPrefix("/download", downloadHandler))
 	unauthedMux.Handle(health.Path, health.Handler()) // relyper: container health check
+	// relyper: MCP (own bearer auth), OAuth, MCP management API
+	for _, rr := range relyperRoutes {
+		if rr == nil {
+			continue
+		}
+		for p, h := range rr.Unauthed {
+			unauthedMux.Handle(p, h)
+		}
+		for p, h := range rr.Authed {
+			authedMux.Handle(p, h)
+		}
+	}
 
 	// Root mux to dispatch to authenticated or unauthenticated handlers
 	rootMux := http.NewServeMux()

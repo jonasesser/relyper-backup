@@ -51,13 +51,13 @@ Keep this list current; it is the merge checklist.
 
 | File | Change | Issue |
 |---|---|---|
-| `cmd/backrest/backrest.go` | registers `/healthz` and the `relyper.v1.RelyperSftp` service (2 imports, 2 lines) | #11, #12 |
+| `cmd/backrest/backrest.go` | registers `/healthz` and the `relyper.v1.RelyperSftp` service; calls `mcpapi.Setup` and mounts its routes (`/mcp`, OAuth, `relyper.v1.RelyperMcp`) via an extra variadic parameter of `newRootMux` | #11, #12, #17 |
 | `internal/api/backresthandler.go` | `SetupSftp` no longer adds host keys with `ssh-keyscan` (trust on first use) | #12 |
 | `webui/src/api/client.ts` | `transport` exported for the Relyper clients | #12 |
 | `webui/src/test/setup.tsx` | global mock for `@/relyper/api` | #12 |
 | `webui/src/features/repositories/AddRepoModal.tsx` | renders `SftpDiagnostics`; texts no longer promise automatic host key scanning; product name | #12, #14 |
 | `webui/src/features/settings/SettingsModal.tsx` | product name in one hint | #14 |
-| `webui/src/app/App.tsx` | Relyper logo, version opens the About dialog | #14 |
+| `webui/src/app/App.tsx` | Relyper logo, version opens the About dialog; sidebar entry and route `/mcp` for the MCP page | #14, #17 |
 | `webui/index.html` | title and favicon | #14 |
 | `webui/package.json` | `start`, `build`, `build-windows`, `compile-i18n` run `relyper/brand-messages.mjs` first | #14 |
 | `webui/project.inlang/settings.json` | vendored message-format plugin; messages read from `.relyper-messages/` | #3, #14 |

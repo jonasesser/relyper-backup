@@ -20,6 +20,7 @@ import {
   FiMenu,
   FiHome,
   FiChevronRight,
+  FiCpu, // relyper: MCP integration
 } from "react-icons/fi";
 
 import {
@@ -94,6 +95,7 @@ const spin = keyframes`
   to { transform: rotate(360deg); }
 `;
 
+const McpPage = React.lazy(() => import("../relyper/mcp/McpPage")); // relyper
 const SummaryDashboard = React.lazy(() =>
   import("../features/dashboard/SummaryDashboard").then((m) => ({
     default: m.SummaryDashboard,
@@ -642,6 +644,23 @@ const SidebarContent = ({ onClose }: { onClose?: () => void }) => {
           </Flex>
         </Box>
 
+        {/* relyper: MCP integration (tokens, approvals, audit log) */}
+        <Box
+          cursor="pointer"
+          onClick={() => handleNav("/mcp")}
+          px={4}
+          py={2}
+          bg={isActive("/mcp") ? "bg.muted" : undefined}
+          _hover={{ bg: "bg.muted" }}
+          userSelect="none"
+          data-testid="sidebar-mcp"
+        >
+          <Flex align="center" gap={2}>
+            <FiCpu />
+            <Text fontWeight="medium">MCP Integration</Text>
+          </Flex>
+        </Box>
+
         {/* PLANS SECTION */}
         <AccordionItem value="plans">
           <AccordionItemTrigger px={4} py={2} _hover={{ bg: "bg.muted" }}>
@@ -981,6 +1000,16 @@ export const App: React.FC = () => {
                       ]}
                     >
                       <GettingStartedGuide />
+                    </MainContentAreaTemplate>
+                  }
+                />
+                <Route
+                  path="/mcp"
+                  element={
+                    <MainContentAreaTemplate
+                      breadcrumbs={[{ title: "MCP Integration" }]}
+                    >
+                      <McpPage />
                     </MainContentAreaTemplate>
                   }
                 />

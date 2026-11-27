@@ -26,10 +26,14 @@ the plain restic CLI, without Relyper Backup.
   repository step by step and tells you what failed.
 - **Reproducible builds:** no build-time downloads from CDNs.
 - Relyper branding with attribution to Backrest and restic.
+- **Native MCP server** at `/mcp`: AI clients (Claude, ChatGPT, Claude Code …)
+  read status and set up repositories, SFTP, plans and schedules. Scoped
+  tokens or OAuth sign-in; restore, deletion, prune and retention changes
+  need your approval in the web UI; audit log (`MCP.md`).
 
-Planned (not built yet): a native MCP server for AI clients with roles and
-server-side approval, Docker/Easypanel discovery, database dumps, backup
-coverage and guided disaster recovery. See `ROADMAP.md`.
+Planned (not built yet): roles in the web UI, Docker/Easypanel discovery,
+database dumps, backup coverage and guided disaster recovery. See
+`ROADMAP.md`.
 
 ## Quick start
 
@@ -52,7 +56,7 @@ TLS reverse proxy before exposing it.
 | `DISASTER-RECOVERY.md` | Restore with the UI or the plain restic CLI |
 | `ARCHITECTURE.md` | Components and where new features attach |
 | `ROADMAP.md` | Phases, status, open decisions |
-| `MCP.md` | Design of the planned MCP integration |
+| `MCP.md` | MCP server: connecting clients, permissions, tools, approvals |
 | `UPSTREAM.md` | How the fork tracks Backrest |
 | `AGENTS.md` | Rules for contributors and coding agents |
 | `CHANGELOG.md` | Relyper changes |

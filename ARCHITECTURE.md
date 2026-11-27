@@ -7,15 +7,16 @@ is planned but not built is marked as such; `ROADMAP.md` tracks it.
 ## Overview
 
 ```
- Browser (React UI)        AI client (planned: MCP)
+ Browser (React UI)        AI client (MCP)
         │  Connect RPC (HTTP/1.1 + h2c, binary protobuf)
         ▼
 ┌──────────────────────── one Go process: /backrest ─────────────────────────┐
 │ HTTP mux                                                                    │
 │  ├─ unauthenticated: /v1.Authentication/*, sync API, /download/* (signed),  │
-│  │                   /healthz (relyper)                                     │
+│  │                   /healthz, /mcp (own token auth), /oauth/*,             │
+│  │                   /.well-known/oauth-* (relyper)                         │
 │  ├─ authenticated:   /v1.Backrest/*, sync state, /metrics,                  │
-│  │                   /relyper.v1.RelyperSftp/* (relyper)                    │
+│  │                   /relyper.v1.RelyperSftp/*, RelyperMcp/* (relyper)      │
 │  └─ fallback:        embedded web UI (webui/dist via go:embed)              │
 │                                                                             │
 │ ConfigManager ── config.json (JSON, migrations on start)                    │
@@ -55,6 +56,11 @@ is planned but not built is marked as such; `ROADMAP.md` tracks it.
 | `cmd/relyper-healthcheck` | Container HEALTHCHECK probe; derives the port from `BACKREST_PORT`. |
 | `internal/relyper/sshdiag` | SFTP diagnostics: host key scan per key type, explicit trust bound to a confirmed SHA-256 fingerprint, step-by-step connection test with stable error categories. |
 | `internal/relyper/sftpapi` | `relyper.v1.RelyperSftp` Connect service (`ScanHostKeys`, `TrustHostKey`, `TestConnection`), mounted behind authentication. |
+| `internal/relyper/mcp` | MCP server (`/mcp`, Streamable HTTP): tools per scope, approval flow for restricted tools, secret scrubbing of every result. Tools call `BackrestHandler`, the config store and the orchestrator like the UI. |
+| `internal/relyper/mcpauth` | Personal access tokens and OAuth 2.1 authorization server (metadata, dynamic client registration, PKCE, consent page, refresh rotation); store `<data>/relyper/mcp-auth.json`. |
+| `internal/relyper/approval` | In-memory approval requests bound to tool, parameter hash and token; single use, 15 minutes. |
+| `internal/relyper/audit` | JSON Lines audit log `<data>/relyper/audit.jsonl`. |
+| `internal/relyper/mcpapi` | Wiring into the HTTP server and the `relyper.v1.RelyperMcp` service for the web UI (tokens, approvals, audit). |
 | `proto/relyper/v1` | Relyper API definitions, separate from upstream's `v1` package. |
 
 Design rules for additions: own packages and own proto package
@@ -111,8 +117,7 @@ of these categories on failure: `invalid_input`, `dns_failure`,
 
 | Component | Where it will live | Notes |
 |---|---|---|
-| MCP server | `internal/relyper/mcp`, mounted at a configurable path in the same process | Streamable HTTP; tools call the same handlers as the UI; approval store for restricted operations. See `MCP.md`. |
-| Roles and permissions | `internal/relyper/authz` | Upstream has no roles: every signed-in user is an administrator. Needed before MCP write access. |
+| Roles and permissions | `internal/relyper/authz` | Upstream has no roles: every signed-in user is an administrator (and can create MCP tokens and approve MCP requests). |
 | Docker / Easypanel discovery | `internal/relyper/discovery` | Docker Engine API, read-only, optional; Easypanel paths verified on a real host first. |
 | Database dumps | `internal/relyper/dbdump` | pg_dump / mysqldump / mariadb-dump / Redis, staged in a dedicated directory, verified. |
 | Coverage analysis, DR inventory | `internal/relyper/coverage`, `internal/relyper/dr` | Based on completed operations, not on configuration alone. |

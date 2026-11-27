@@ -1,0 +1,141 @@
+syntax = "proto3";
+
+// relyper: Relyper Backup addition, not part of upstream Backrest.
+//
+// Management of the native MCP server for signed-in web UI users: access
+// tokens, connected OAuth apps, approval of restricted operations and the
+// audit log. This service is mounted behind the web UI authentication; MCP
+// tokens cannot call it, so an AI client can never approve its own requests.
+package relyper.v1;
+
+option go_package = "github.com/garethgeorge/backrest/gen/go/relyper/v1";
+
+service RelyperMcp {
+  rpc GetMcpStatus(GetMcpStatusRequest) returns (McpStatus) {}
+
+  // Lists personal access tokens and OAuth grants (never their secrets).
+  rpc ListTokens(ListTokensRequest) returns (TokenList) {}
+
+  // Creates a personal access token. The secret is returned once.
+  rpc CreateToken(CreateTokenRequest) returns (CreateTokenResponse) {}
+
+  // Revokes a token or an OAuth grant immediately.
+  rpc RevokeToken(RevokeTokenRequest) returns (McpToken) {}
+
+  rpc ListApprovals(ListApprovalsRequest) returns (ApprovalList) {}
+
+  // Approves or denies a pending request of a restricted MCP tool.
+  rpc DecideApproval(DecideApprovalRequest) returns (Approval) {}
+
+  rpc ListAuditEvents(ListAuditEventsRequest) returns (AuditEventList) {}
+}
+
+message GetMcpStatusRequest {}
+
+message McpScope {
+  string name = 1;
+  string description = 2;
+  bool restricted = 3;
+}
+
+message McpTool {
+  string name = 1;
+  string scope = 2;
+  bool restricted = 3;
+  string description = 4;
+}
+
+message McpStatus {
+  string endpoint_path = 1; // e.g. /mcp
+  string public_url = 2; // RELYPER_PUBLIC_URL if set
+  repeated McpScope scopes = 3;
+  repeated McpTool tools = 4;
+  bool login_available = 5; // users exist, so OAuth sign-in works
+  int32 pending_approvals = 6;
+  string audit_log_path = 7;
+}
+
+message ListTokensRequest {}
+
+message McpToken {
+  string id = 1;
+  string kind = 2; // personal or oauth
+  string name = 3;
+  repeated string scopes = 4;
+  string created_by = 5;
+  int64 created_at_ms = 6;
+  int64 expires_at_ms = 7; // access secret; for OAuth grants it moves with each refresh
+  int64 last_used_at_ms = 8;
+  int64 revoked_at_ms = 9;
+  int64 refresh_expires_at_ms = 10; // OAuth only
+  bool active = 11; // usable now (OAuth: refresh still possible)
+}
+
+message TokenList {
+  repeated McpToken tokens = 1;
+}
+
+message CreateTokenRequest {
+  string name = 1;
+  repeated string scopes = 2;
+  int32 lifetime_days = 3; // 1 to 366
+}
+
+message CreateTokenResponse {
+  McpToken token = 1;
+  string secret = 2; // shown once, never stored
+}
+
+message RevokeTokenRequest {
+  string id = 1;
+}
+
+message ListApprovalsRequest {}
+
+message Approval {
+  string id = 1;
+  string tool = 2;
+  string summary = 3;
+  string params_json = 4; // redacted
+  string preview_json = 5;
+  string token_id = 6;
+  string token_name = 7;
+  string status = 8; // pending, approved, denied, used, expired
+  int64 created_at_ms = 9;
+  int64 expires_at_ms = 10;
+  string decided_by = 11;
+  int64 decided_at_ms = 12;
+  string deny_reason = 13;
+  int64 executed_at_ms = 14;
+  int64 operation_id = 15;
+}
+
+message ApprovalList {
+  repeated Approval approvals = 1;
+}
+
+message DecideApprovalRequest {
+  string id = 1;
+  bool approve = 2;
+  string reason = 3;
+}
+
+message ListAuditEventsRequest {
+  int32 limit = 1; // default 200
+}
+
+message AuditEvent {
+  int64 time_ms = 1;
+  string actor = 2;
+  string source = 3;
+  string action = 4;
+  string outcome = 5;
+  string params = 6;
+  string message = 7;
+  string approval_id = 8;
+  string remote_addr = 9;
+}
+
+message AuditEventList {
+  repeated AuditEvent events = 1;
+}

@@ -7,3 +7,13 @@ export const relyperSftpService = {
   trustHostKey: vi.fn(),
   testConnection: vi.fn(),
 };
+
+export const relyperMcpService = {
+  getMcpStatus: vi.fn(),
+  listTokens: vi.fn(),
+  createToken: vi.fn(),
+  revokeToken: vi.fn(),
+  listApprovals: vi.fn(),
+  decideApproval: vi.fn(),
+  listAuditEvents: vi.fn(),
+};

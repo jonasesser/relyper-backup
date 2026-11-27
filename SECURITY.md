@@ -17,14 +17,15 @@ https://github.com/garethgeorge/backrest/security.
 | Authentication | Users with bcrypt password hashes; HS256 JWT valid for 7 days, signed with a random 64-byte secret in `<data>/jwt-secret`. Basic auth accepted on API calls. (upstream) |
 | Authorization | **None beyond "signed in".** Every user is a full administrator. (upstream) |
 | First start | Authentication is **disabled until the first user is created** in the setup dialog. Until then anyone who reaches the port has full control. Create the user immediately, before exposing the port. (upstream) |
-| Secrets in the UI | `GetConfig` removes repository passwords and other secrets before sending the config to the browser. (upstream) |
+| Secrets in the UI | `GetConfig` masks user password hashes and the multihost private key. Repository passwords and environment variables **are** sent to the signed-in browser so they can be edited. (upstream) |
+| MCP | Separate credentials (scoped personal access tokens or OAuth 2.1 with PKCE), stored as SHA-256 hashes; they only work on `/mcp`. Responses never contain secrets. Restricted operations need a human approval in the web UI bound to the exact parameters. No shell, hook or raw restic access. See `MCP.md`. (Relyper, #17) |
 | Secrets at rest | Repository passwords and environment variables (e.g. S3 keys) are stored **in plaintext** in `config.json`; SSH private keys in `/config/.backrest-ssh` (mode 0600). Protect `/config` with file permissions and disk encryption. (upstream) |
 | SSH host keys | Never trusted implicitly. Keys are added to `known_hosts` only after the user confirmed the SHA-256 fingerprint, a recorded key is never replaced automatically, revoked keys are honoured, restic runs ssh with `BatchMode=yes` and a fixed `UserKnownHostsFile`. (Relyper, #12/#13; upstream added keys with `ssh-keyscan` without any check) |
 | SFTP test password | Used for one test connection only, never stored or logged. (Relyper) |
 | Input validation | SFTP host names are checked against option injection (`-oProxyCommand=…`) and shell metacharacters; no Relyper code runs a shell. (Relyper) |
 | Health endpoint | `/healthz` is unauthenticated and returns only `{"status":"ok"}`. (Relyper) |
 | Supply chain | restic download verified by SHA-256 and signature (upstream). The i18n plugin that upstream loaded unpinned from a CDN at build time is vendored and checksummed. (Relyper, #3) |
-| Audit | Trusting a host key is logged with user, host and fingerprint. Backup operations are recorded in the operation history. There is no general audit log yet. |
+| Audit | MCP tool calls, approvals, token and OAuth events go to `<data>/relyper/audit.jsonl` with redacted parameters. Trusting a host key in the UI is logged with user, host and fingerprint. Backup operations are recorded in the operation history. Web UI configuration changes are not audited yet. |
 | TLS | Not terminated by the server. Run it behind a TLS reverse proxy (Easypanel/Traefik, Caddy, nginx). |
 
 ## Threat model
@@ -46,7 +47,7 @@ https://github.com/garethgeorge/backrest/security.
 | Stolen or guessed password, stolen JWT | Full control: read all backups (snapshot browser, downloads), run restores, delete snapshots, change plans, **run hook commands (shell inside the container)** and arbitrary restic commands | Strong unique password, TLS, keep the UI off the public internet or behind an additional auth layer (VPN, SSO proxy). Roles are planned. |
 | Compromised Relyper Backup container | Reads mounted sources; with the repository credentials it can **delete every remote backup it can reach** (restic `forget`/`prune`, or deleting files over SFTP) | See "Residual risks". |
 | Man-in-the-middle on the SFTP connection | Prevented by host key verification; a changed key stops all connections until a human decides. | Compare fingerprints with the provider. |
-| Malicious content in backed-up files, logs, metadata | Shown in the UI as text; will be passed to AI clients via MCP in the future. | Treat as untrusted input; never execute it; MCP responses will mark it as data. |
+| Malicious content in backed-up files, logs, metadata | Shown in the UI as text; passed to AI clients via MCP. | Treat as untrusted input; never execute it; MCP tool descriptions and server instructions mark it as untrusted data. |
 | Malicious restore paths | restic restores into the chosen target; a restore over production paths can overwrite data. | Restore into a staging directory (`/restore`); mount production read-only. |
 
 ### Residual risks
@@ -65,7 +66,8 @@ https://github.com/garethgeorge/backrest/security.
     on the roadmap as an evaluation item.
 - **Plaintext secrets in `config.json`.** Anyone who can read `/config` can
   read all backups. Encrypted secret storage is planned.
-- **No roles.** Viewing status and deleting backups need the same login.
+- **No roles in the web UI.** Viewing status and deleting backups need the same login, and every web UI user can create MCP tokens and approve MCP requests. MCP credentials themselves are scoped.
+- **MCP exposure.** Connecting claude.ai or ChatGPT requires the instance to be reachable from the internet. The OAuth consent page accepts the web UI password; use a strong password. A repository password given to `create_repository` passes through the AI provider.
 - **Docker socket.** Mounting it gives root on the host, even with `:ro`. Do
   not mount it unless you need hooks or discovery that require it; prefer a
   filtering socket proxy. See `DEPLOYMENT.md`.

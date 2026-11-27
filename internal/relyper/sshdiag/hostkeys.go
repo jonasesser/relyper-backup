@@ -351,3 +351,12 @@ func validateHost(host string) *Diagnostic {
 	}
 	return nil
 }
+
+// ValidateHost rejects empty host names and names that could be read as
+// ssh options or contain shell metacharacters.
+func ValidateHost(host string) error {
+	if d := validateHost(host); d != nil {
+		return d
+	}
+	return nil
+}

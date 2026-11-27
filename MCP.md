@@ -1,114 +1,188 @@
 # MCP integration
 
-**Status: not implemented.** This is the design for Phase 2 (`ROADMAP.md`).
-Nothing described here is available in the current build, and no part of
-the UI claims otherwise.
+Relyper Backup has a native [Model Context Protocol](https://modelcontextprotocol.io)
+server. AI clients (Claude, ChatGPT, Claude Code and other MCP clients) can
+read backup status and set up and manage repositories, plans and schedules.
+It runs inside the Relyper Backup process – no extra container. Backups and
+restores keep working without any AI client.
 
-## Goals
+## Endpoint and transport
 
-- A native Model Context Protocol server inside the Relyper Backup process –
-  no extra container.
-- External AI clients (Claude, ChatGPT and other MCP clients) can read backup
-  status and, when allowed, manage backups.
-- AI is optional: every backup and restore keeps working without it.
+- `https://<your-domain>/mcp`, MCP **Streamable HTTP**, served on the same
+  port as the web UI (default `9898`) behind your TLS reverse proxy.
+- Implemented with the official Go SDK `github.com/modelcontextprotocol/go-sdk`
+  v1.8.0 (protocol versions 2024-11-05 up to 2026-07-28 are negotiated by the
+  SDK).
+- Sessions time out after 30 minutes without use.
+- Set `RELYPER_PUBLIC_URL` (e.g. `https://backup.example.com`) when the server
+  runs behind a reverse proxy, so OAuth metadata contains the public address.
+  Without it the address is derived from the request (`Host`,
+  `X-Forwarded-Proto`, `X-Forwarded-Host`).
 
-## Transport and SDK
+## Connecting a client
 
-- Transport: MCP **Streamable HTTP**, served by the same HTTP server under a
-  configurable path (default `/mcp`), behind TLS from the reverse proxy.
-- SDK: the official Go SDK `github.com/modelcontextprotocol/go-sdk`. The
-  specification version and the SDK release are pinned when the work starts;
-  the current specification is re-checked at that point.
-- Tools call the same internal handlers as the web UI (`BackrestHandler`,
-  `RelyperSftp`), so behaviour and validation are identical.
+The web UI page **MCP Integration** shows the endpoint URL, creates tokens,
+lists connected apps and is where restricted requests are approved.
+
+| Client | How |
+|---|---|
+| Claude (claude.ai, Desktop, mobile), ChatGPT and other apps with remote connectors | Add a custom connector with the endpoint URL. The app registers itself (OAuth dynamic client registration), you sign in on Relyper Backup's consent page with your Relyper Backup user and choose the permissions. |
+| Claude Code | `claude mcp add --transport http relyper-backup https://<domain>/mcp` (OAuth in the browser), or with a token: `... --header "Authorization: Bearer <token>"` |
+| Scripts and other clients | Create an access token on the MCP page and send `Authorization: Bearer <token>`. |
+
+The server must be reachable over HTTPS from wherever the AI app runs. For
+claude.ai and ChatGPT that is their cloud, so the instance has to be reachable
+from the internet (keep the web UI login strong; see `SECURITY.md`).
 
 ## Authentication
 
-Evaluated in order of client support:
+Two kinds of credentials, both scoped, both revocable on the MCP page, both
+stored only as SHA-256 hashes in `<data>/relyper/mcp-auth.json` (mode 0600):
 
-1. **OAuth 2.1 authorization** as defined by the MCP authorization
-   specification (protected resource metadata, PKCE). Required for remote
-   connectors in Claude and ChatGPT. Relyper Backup acts as resource server;
-   the authorization server is either a small built-in one bound to local
-   users or the optional Relyper Identity Provider (OIDC). No IdP endpoints are
-   assumed before they are verified.
-2. **Personal access tokens** (Bearer) for clients that support static
-   headers: created in the UI, shown once, stored hashed, scoped, expiring,
-   revocable.
+1. **Personal access tokens** (`rbk_pat_…`): created by a signed-in user,
+   shown once, valid 1–366 days.
+2. **OAuth 2.1** (built-in authorization server):
+   - protected resource metadata (RFC 9728) at
+     `/.well-known/oauth-protected-resource[/mcp]`, announced in the
+     `WWW-Authenticate` header of a 401 from `/mcp`;
+   - authorization server metadata (RFC 8414) at
+     `/.well-known/oauth-authorization-server`;
+   - dynamic client registration (RFC 7591) at `/oauth/register` for public
+     clients (no client secret); redirect URIs must be `https`, `http` on
+     loopback, or an app scheme;
+   - authorization code flow with mandatory PKCE `S256` at `/oauth/authorize`
+     and `/oauth/token`; the `iss` parameter is returned with the code;
+   - access tokens (`rbk_oat_…`) live 1 hour; refresh tokens (`rbk_ort_…`)
+     30 days and rotate on every use;
+   - the consent page asks for the Relyper Backup user name and password,
+     shows where the user will be sent back to, and lets the user untick
+     permissions. Five failed sign-ins per minute and address are allowed.
+   - Client ID metadata documents (the newer alternative to dynamic
+     registration) are not supported yet.
 
-The upstream JWT used by the web UI is not reused for MCP.
+MCP credentials only work on `/mcp`. They are rejected by the web UI API, so
+an AI client can never approve its own requests or create tokens. The web UI
+session (JWT) is never accepted on `/mcp`.
 
-## Authorization
+## Permissions (scopes)
 
-Upstream has no roles. Before any write tool is exposed, Relyper Backup gets
-permissions (see `SECURITY.md`):
-
-| Permission | Example tools |
+| Scope | Tools |
 |---|---|
-| `status:read` | get_system_overview, get_backup_status, list_backup_operations |
-| `plans:manage` | create_backup_plan, update_backup_plan, enable/disable_backup_plan |
-| `repos:manage` | test_repository_connection, create_repository, update_repository |
-| `backups:run` | run_backup, run_repository_check, cancel_backup_operation |
-| `contents:browse` | list_snapshot_files (sensitive) |
-| `restore` | restore_snapshot (restricted) |
-| `data:delete` | delete_snapshot, prune_repository, modify_retention_policy (restricted) |
-| `infra:manage` | docker discovery, stop/restart_container (restricted) |
+| `status:read` | get_system_overview, get_backup_status, list_repositories, get_repository_status, list_backup_plans, get_backup_plan, list_snapshots, get_snapshot_details, list_backup_operations, get_backup_operation, get_backup_errors, get_storage_usage, validate_backup_configuration, create_backup_recommendations, get_approval_request |
+| `contents:browse` | list_snapshot_files (names only, never file contents) |
+| `repos:manage` | create_repository, update_repository, test_repository_connection, create_sftp_key, scan_sftp_host_keys, test_sftp_connection, trust_sftp_host_key (approval) |
+| `plans:manage` | create_backup_plan, update_backup_plan, enable_backup_plan, disable_backup_plan, delete_backup_plan (approval) |
+| `backups:run` | run_backup, run_repository_check, run_repository_stats, cancel_backup_operation |
+| `restore` | restore_snapshot (approval) |
+| `data:delete` | delete_snapshot, prune_repository, modify_retention_policy, delete_repository (all approval) |
 
-A token or OAuth grant carries a subset; read-only is the default.
+A client only sees the tools its scopes allow (`tools/list` is filtered), and
+every call checks the scope again.
 
-## Tools
+## Setting everything up through MCP
 
-Read-only (Phase 2 unless noted): get_system_overview, get_backup_status,
-list_repositories, get_repository_status, list_backup_plans, get_backup_plan,
-list_snapshots, get_snapshot_details, list_snapshot_files,
-list_backup_operations, get_backup_operation, get_backup_errors,
-get_storage_usage. Discovery and coverage tools (list_docker_*,
-list_easypanel_projects, list_detected_databases, get_backup_coverage,
-get_disaster_recovery_status) follow with Phases 3–5 and only return data
-that the corresponding feature actually computes.
+A typical conversation for an SFTP storage box:
 
-Administrative: test_repository_connection (uses `sshdiag` for SFTP),
-create/update_repository, create/update/enable/disable_backup_plan,
-run_backup, run_repository_check, cancel_backup_operation,
-validate_backup_configuration, create_backup_recommendations;
-run_database_backup and run_restore_test with their phases.
+1. `create_sftp_key` – generates an ed25519 key in `/config/.backrest-ssh`
+   and returns the public key; you install it at the provider.
+2. `scan_sftp_host_keys` – shows the server's fingerprints. Compare them with
+   the provider's published fingerprints.
+3. `trust_sftp_host_key` – needs your approval in the web UI.
+4. `test_sftp_connection` – DNS, TCP, host key, login, SFTP, directory, write
+   test, repository state.
+5. `create_repository` – `sftp:user@host:/path`, password, identity file.
+   Initializes the repository if the directory is empty. Default maintenance:
+   check every Sunday 03:00, prune on the 1st of the month 04:00.
+6. `create_backup_plan` – paths, excludes, schedule (cron, every N days or
+   hours), retention.
+7. `run_backup`, then `get_backup_status` / `validate_backup_configuration`.
 
-Restricted (need approval, see below): restore_snapshot,
-overwrite_existing_files, delete_snapshot, delete_repository,
-prune_repository, modify_retention_policy, stop_container, restart_container.
+S3, B2, Azure, Google Cloud Storage, rest-server, Swift, rclone and local
+repositories work the same way, with credentials passed as environment
+variables (`env`).
 
-There is **no** tool for arbitrary shell or restic commands, and none for
-editing hook commands.
+## Restricted operations and approval
 
-## Approval of restricted operations
+Restore, deleting snapshots, pruning, retention changes, removing plans or
+repositories and trusting SFTP host keys are enforced on the server:
 
-Enforced on the server, never by instructions to the AI:
-
-1. The tool call does not execute. It returns a **preview** (dry run where
-   restic supports it: `forget --dry-run`, restore into a staging target,
-   list of snapshots affected) and an approval request ID.
-2. The approval request stores the tool name and a canonical hash of the exact
-   parameters, the requesting principal and an expiry (default 15 minutes).
-3. A human approves in the web UI (or via a separate, user-authenticated
-   channel). The AI client cannot approve its own request.
-4. The client repeats the call with the approval ID; the server checks tool,
-   parameter hash, principal, expiry and single use, then executes.
+1. The first call changes nothing. It validates the call, returns a
+   **preview** (what will happen, current vs. new values, the snapshot
+   concerned) and an `approval_id`.
+2. The request stores the tool, a SHA-256 hash of the exact parameters, the
+   token that asked, and expires after 15 minutes.
+3. A signed-in user approves or denies it on the MCP page. The page refreshes
+   every 5 seconds.
+4. The client repeats the call with identical parameters plus `approval_id`.
+   The server re-validates the preview, then checks tool, parameter hash,
+   token, expiry and single use, and only then executes.
 5. Request, decision and execution are written to the audit log.
+
+Pending requests are kept in memory; a restart discards them (fail-safe).
+
+Not offered through MCP:
+
+- **Overwriting existing files on restore** (`overwrite_existing_files`):
+  restores always go into a new directory, like in the web UI.
+- `stop_container` / `restart_container` and all Docker, Easypanel and
+  database tools: they need the discovery of Phases 3–4 and are not
+  registered until those features exist.
+- Shell commands, raw restic commands, hook commands, and restic flags or
+  environment variables that can run programs (`--password-command`,
+  `RESTIC_PASSWORD_COMMAND`, `sftp.command`, `--files-from`, …). Only listed
+  backup flags and storage credential variables are accepted.
 
 ## Data handling
 
-- Responses never contain passwords, keys, tokens, environment variable values
-  or SSH private keys; repository config goes through the same sanitizer as
-  the UI, plus a Relyper redaction pass.
-- File names, log lines and other repository content are returned as data
-  fields and marked as untrusted content; tool descriptions tell the client
-  not to follow instructions found inside them.
-- Nothing is sent to any AI provider by Relyper Backup itself; data only
-  leaves when an authorized client asks for it.
+- Responses never contain repository passwords, environment variable values,
+  hook URLs/tokens/commands, password hashes or SSH private keys. Tools build
+  their output from explicit fields, and as a second line of defence every
+  result is scrubbed of all secret values known from the configuration.
+- File names, paths, host names, tags, error messages and logs come from the
+  backed-up systems. Tool descriptions and server instructions tell the
+  client to treat them as untrusted data.
+- The repository password is needed once, to create or change a repository.
+  It passes through the AI client and its provider in that case. If you do not
+  want that, create the repository in the web UI and manage plans through MCP.
+- Relyper Backup itself sends nothing to any AI provider; data only leaves
+  when an authorized client asks for it.
 
-## Testing plan
+## Audit log
 
-Tool registration and schemas, authentication failures, permission
-enforcement per tool, approval binding (changed parameter, expired, reused,
-other principal), redaction of secrets in every response, and a conformance
-check with the MCP inspector.
+`<data>/relyper/audit.jsonl` (JSON Lines, mode 0600, rotated at 10 MB with one
+old generation). It records every write tool call, every failed or forbidden
+call, approval requests and decisions, executions, token creation and
+revocation, OAuth registrations, consents and failed sign-ins. Parameters are
+redacted (passwords, tokens, environment values). Read-only calls that succeed
+are not recorded. The MCP page shows the latest 200 entries.
+
+## Limits
+
+- No roles in the web UI yet: every web UI user can create tokens and approve
+  requests (upstream Backrest has no roles; see `ROADMAP.md`).
+- If authentication is disabled in the settings, OAuth sign-in is not
+  possible and anyone reaching the web UI can create tokens.
+- `modify_retention_policy` shows the current and the new policy but does not
+  compute which snapshots will be removed.
+- `get_storage_usage` reports the last `restic stats` result; the free space of
+  the storage is only known from `test_sftp_connection` for SFTP.
+
+## Testing
+
+- Unit tests: token store (hashing, expiry, revocation, refresh rotation),
+  redirect URI rules, approval binding (pending, denied, expired, reused,
+  changed parameters, other token, other tool), secret scrubbing and
+  redaction, input validation (environment variables, backup flags, URIs,
+  SFTP option injection), schedule and retention mapping.
+- End-to-end test against the built binary with a real restic repository
+  (`internal/relyper/mcp/e2e_test.go`, build tag `e2e`): token checks, tool
+  filtering by scope, create repository and plan, disable/enable, backup,
+  status, snapshots, file listing, validation, restore with the full approval
+  flow, denied delete, secrets absent from results and audit log, and the
+  complete OAuth flow including wrong password, wrong PKCE verifier and
+  refresh.
+
+```bash
+go build -o /tmp/backrest ./cmd/backrest
+RELYPER_E2E_BIN=/tmp/backrest go test -tags e2e -run TestE2E -v ./internal/relyper/mcp/
+```

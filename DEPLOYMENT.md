@@ -82,8 +82,12 @@ documentation; mount what you need.
 The `BACKREST_*` names are kept from upstream so existing Backrest
 configurations and documentation keep working.
 
-The MCP endpoint is not implemented yet (Phase 2, see `ROADMAP.md`). It will
-be served by the same process and port; no extra container is planned.
+| `RELYPER_PUBLIC_URL` | unset | Public HTTPS address, e.g. `https://backup.example.com`. Used in the OAuth metadata of the MCP server; without it the address is derived from the request headers. |
+
+The MCP endpoint `/mcp` and the OAuth endpoints (`/.well-known/oauth-*`,
+`/oauth/*`) are served by the same process and port. The reverse proxy must
+pass them through unchanged and must not buffer responses of `/mcp` (it
+streams server-sent events). See `MCP.md`.
 
 ## Health check and shutdown
 
@@ -136,8 +140,9 @@ discovery is planned for Phase 3.
 Everything needed to recreate an instance is in `/config`:
 `config.json` (repositories including their passwords, plans, users with
 password hashes) and `.backrest-ssh/` (SSH private keys and trusted host
-keys). `/data` holds history and logs only; it can be lost without losing any
-backup.
+keys). `/data` holds history, logs, MCP access tokens and the MCP audit log;
+it can be lost without losing any backup (MCP clients then have to connect
+again).
 
 - Keep an offline copy of `config.json` and the SSH keys in a password
   manager or another secure place **outside the protected host**.

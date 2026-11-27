@@ -18,6 +18,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/hectane/go-acl v1.0.0
 	github.com/mattn/go-colorable v0.1.15
+	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/natefinch/atomic v1.0.1
 	github.com/ncruces/go-sqlite3 v0.35.1
 	github.com/ncruces/zenity v0.10.14
@@ -45,6 +46,7 @@ require (
 	github.com/dchest/jsmin v1.0.0 // indirect
 	github.com/eclipse/paho.golang v0.23.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
+	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/josephspurrier/goversioninfo v1.7.0 // indirect
@@ -59,10 +61,15 @@ require (
 	github.com/prometheus/procfs v0.21.0 // indirect
 	github.com/randall77/makefat v0.0.0-20260406194835-1b91746796b7 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
+	github.com/segmentio/asm v1.1.3 // indirect
+	github.com/segmentio/encoding v0.5.4 // indirect
+	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	golang.org/x/image v0.43.0 // indirect
+	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/term v0.44.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
+	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260622175928-b703f567277d // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

@@ -31,20 +31,23 @@ Known gaps from Phase 1:
 - SFTP was tested against OpenSSH (atmoz/sftp), not yet against the Host
   Europe storage account.
 
-## Phase 2 – Native MCP (open)
+## Phase 2 – Native MCP (partial)
 
-Design: `MCP.md`. Order matters – roles come before any write tool.
+Details: `MCP.md`.
 
-1. Roles and permissions (`internal/relyper/authz`), enforced in the API
-   handlers, also for the web UI.
-2. General audit log.
-3. MCP server (Streamable HTTP, official Go SDK) with authentication
-   (personal access tokens first, then OAuth 2.1).
-4. Read-only tools.
-5. Administrative tools (plans, repositories, run backup/check).
-6. Server-side approval for restricted operations (restore, delete, prune,
-   retention changes).
-7. MCP configuration and status page in the web UI.
+| Item | Status | Notes |
+|---|---|---|
+| MCP server (Streamable HTTP, official Go SDK v1.8.0) at `/mcp` | done | #17 |
+| Personal access tokens with scopes | done | #17 – hashed, expiring, revocable; MCP credentials only work on `/mcp` |
+| OAuth 2.1 for remote connectors | done | #17 – metadata, dynamic client registration, PKCE S256, rotating refresh tokens; client ID metadata documents not yet |
+| Read-only tools | done | #17 – status, repos, plans, snapshots, operations, errors, storage, validation, recommendations |
+| Setup and administrative tools | done | #17 – repositories (incl. SFTP key, host key scan, connection test), plans, schedules, enable/disable, backup, check, stats, cancel |
+| Server-side approval for restricted operations | done | #17 – restore, delete snapshot, prune, retention, delete plan/repository, trust host key |
+| Audit log | partial | #17 – MCP, approvals, tokens, OAuth; web UI config changes not yet |
+| MCP page in the web UI | done | #17 – connect, approvals, tokens, audit log |
+| Roles and permissions for web UI users | open | Today every web UI user can create tokens and approve requests |
+| Tested with claude.ai / ChatGPT connectors | open | Needs a publicly reachable instance |
+| Docker, Easypanel, database and container tools | open | With Phases 3–4; not registered before they exist |
 
 ## Phase 3 – Infrastructure discovery (open)
 
