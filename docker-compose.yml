@@ -1,0 +1,43 @@
+# Relyper Backup – example Docker Compose deployment.
+#
+#   docker compose up -d
+#   open http://<host>:9898 and create the admin user on first start
+#
+# Read DEPLOYMENT.md before adding mounts: everything mounted here can be
+# read (and, without :ro, changed) by anyone who can sign in as admin.
+
+services:
+  relyper-backup:
+    build: .
+    image: relyper-backup:latest
+    container_name: relyper-backup
+    hostname: relyper-backup # restic records the hostname in every snapshot; keep it stable
+    restart: unless-stopped
+    stop_grace_period: 2m # let running restic operations finish on shutdown
+    ports:
+      - "9898:9898"
+    environment:
+      TZ: Europe/Berlin
+      # BACKREST_PORT: "0.0.0.0:9898"
+    volumes:
+      # Writable application state (configuration, SSH keys, known_hosts).
+      - relyper-config:/config
+      # Writable operation history and logs.
+      - relyper-data:/data
+      # restic cache, can be recreated but speeds up every operation.
+      - relyper-cache:/cache
+      # Restore staging directory: restores land here, never on top of live data.
+      - ./restore:/restore
+      # Data to back up, read-only. Add one line per source directory.
+      - /srv:/sources/srv:ro
+      # Optional: local restic repository (prefer remote storage such as SFTP).
+      # - /mnt/backup-disk/restic:/repos
+      # Optional and privileged: Docker socket for hook scripts and the
+      # planned Docker discovery. Access to the socket equals root on the
+      # host, even with :ro. See DEPLOYMENT.md.
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
+
+volumes:
+  relyper-config:
+  relyper-data:
+  relyper-cache:

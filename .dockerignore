@@ -1,4 +1,6 @@
 webui/node_modules
+webui/dist
+docs/node_modules
 dist
 .git
 .github
