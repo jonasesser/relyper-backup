@@ -53,6 +53,12 @@ message McpStatus {
   bool login_available = 5; // users exist, so OAuth sign-in works
   int32 pending_approvals = 6;
   string audit_log_path = 7;
+  // The signed-in user may approve requests and create or revoke tokens.
+  bool can_administer = 8;
+  // Name of the identity provider for sign-in ("Relyper"), empty if off.
+  string identity_provider = 9;
+  // Role a provider user needs to administer MCP (e.g. backup_admin).
+  string admin_role = 10;
 }
 
 message ListTokensRequest {}

@@ -27,6 +27,7 @@ import (
 	"github.com/garethgeorge/backrest/internal/orchestrator"
 	"github.com/garethgeorge/backrest/internal/relyper/approval"
 	"github.com/garethgeorge/backrest/internal/relyper/audit"
+	"github.com/garethgeorge/backrest/internal/relyper/identity"
 	"github.com/garethgeorge/backrest/internal/relyper/mcp"
 	"github.com/garethgeorge/backrest/internal/relyper/mcpauth"
 	"go.uber.org/zap"
@@ -83,6 +84,39 @@ func Setup(d Deps) (*Routes, error) {
 	}
 	oauth.Init()
 
+	// Sign-in through Relyper Identity (OIDC), optional. A broken
+	// configuration only disables this sign-in; local users keep working.
+	var idp *identity.Service
+	if cfg, err := identity.ConfigFromEnv(nil); err != nil {
+		zap.S().Errorw("Relyper Identity sign-in disabled: invalid configuration", "error", err)
+	} else if cfg != nil {
+		idp, err = identity.New(identity.Options{
+			Config: cfg, DataDir: dir, Version: d.Version, Audit: auditLog, BaseURL: mcpauth.BaseURL,
+			AuthEnabled: func() bool { return authEnabled(d.Config) },
+		})
+		if err != nil {
+			zap.S().Errorw("Relyper Identity sign-in disabled", "error", err)
+			idp = nil
+		}
+	}
+	if idp != nil {
+		d.Authenticator.SetExternalVerifier(idp.VerifySession)
+		oauth.External = &mcpauth.External{
+			Name:    idp.DisplayName(),
+			Enabled: idp.Enabled,
+			Start: func(w http.ResponseWriter, r *http.Request, consentID string) {
+				idp.Start(w, r, identity.FlowConsent, consentID)
+			},
+		}
+		idp.SetConsentCompleter(func(w http.ResponseWriter, r *http.Request, consentID string, id *identity.Identity, e *identity.Error) {
+			if e != nil {
+				oauth.CompleteExternal(w, r, consentID, "", e.Message)
+				return
+			}
+			oauth.CompleteExternal(w, r, consentID, id.UserName(), "")
+		})
+	}
+
 	srv := mcp.New(mcp.Deps{
 		Config:              d.Config,
 		Orchestrator:        d.Orchestrator,
@@ -98,7 +132,7 @@ func Setup(d Deps) (*Routes, error) {
 		ResourceMetadataURL: oauth.ResourceMetadataURL,
 	})
 
-	h := &Handler{tokens: tokens, approvals: approvals, audit: auditLog, server: srv, config: d.Config}
+	h := &Handler{tokens: tokens, approvals: approvals, audit: auditLog, server: srv, config: d.Config, idp: idp}
 	path, handler := v1connect.NewRelyperMcpHandler(h)
 
 	routes := &Routes{
@@ -106,8 +140,25 @@ func Setup(d Deps) (*Routes, error) {
 		Unauthed: oauth.Routes(),
 	}
 	routes.Unauthed[mcp.Path] = srv.Handler()
+	if idp != nil {
+		for p, hd := range idp.Routes() {
+			routes.Unauthed[p] = hd
+		}
+	} else {
+		// The web UI asks whether provider sign-in is offered.
+		routes.Unauthed[identity.PathStatus] = http.HandlerFunc(identity.DisabledStatus)
+	}
 	zap.S().Infow("MCP server enabled", "path", mcp.Path, "token_store", filepath.Join(dir, "mcp-auth.json"))
 	return routes, nil
+}
+
+func authEnabled(c *config.ConfigManager) bool {
+	cfg, err := c.Get()
+	if err != nil {
+		return false
+	}
+	a := cfg.GetAuth()
+	return a != nil && !a.GetDisabled()
 }
 
 func loginAvailable(c *config.ConfigManager) bool {
@@ -126,6 +177,19 @@ type Handler struct {
 	audit     *audit.Log
 	server    *mcp.Server
 	config    *config.ConfigManager
+	idp       *identity.Service // nil if Relyper Identity is not configured
+}
+
+// requireAdmin refuses users signed in through the identity provider who do
+// not have the admin role. Local users are the emergency access and keep
+// full rights.
+func (h *Handler) requireAdmin(ctx context.Context, action string) error {
+	if h.idp.IsAdmin(ctx) {
+		return nil
+	}
+	user := currentUser(ctx)
+	h.audit.Record(audit.Event{Actor: "user:" + user, Source: "ui", Action: action, Outcome: "forbidden", Message: "missing role " + h.idp.AdminRole()})
+	return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("this needs the role %s", h.idp.AdminRole()))
 }
 
 var _ v1connect.RelyperMcpHandler = (*Handler)(nil)
@@ -164,6 +228,11 @@ func (h *Handler) GetMcpStatus(ctx context.Context, req *connect.Request[relyper
 		LoginAvailable:   loginAvailable(h.config),
 		PendingApprovals: int32(h.approvals.PendingCount()),
 		AuditLogPath:     h.audit.Path(),
+		CanAdminister:    h.idp.IsAdmin(ctx),
+		AdminRole:        h.idp.AdminRole(),
+	}
+	if h.idp.Enabled() {
+		out.IdentityProvider = h.idp.DisplayName()
 	}
 	for _, s := range mcpauth.AllScopes {
 		out.Scopes = append(out.Scopes, &relyperv1.McpScope{Name: s.Name, Description: s.Description, Restricted: s.Restricted})
@@ -183,6 +252,9 @@ func (h *Handler) ListTokens(ctx context.Context, req *connect.Request[relyperv1
 }
 
 func (h *Handler) CreateToken(ctx context.Context, req *connect.Request[relyperv1.CreateTokenRequest]) (*connect.Response[relyperv1.CreateTokenResponse], error) {
+	if err := h.requireAdmin(ctx, "token.create"); err != nil {
+		return nil, err
+	}
 	user := currentUser(ctx)
 	days := req.Msg.LifetimeDays
 	if days <= 0 || days > 366 {
@@ -197,6 +269,9 @@ func (h *Handler) CreateToken(ctx context.Context, req *connect.Request[relyperv
 }
 
 func (h *Handler) RevokeToken(ctx context.Context, req *connect.Request[relyperv1.RevokeTokenRequest]) (*connect.Response[relyperv1.McpToken], error) {
+	if err := h.requireAdmin(ctx, "token.revoke"); err != nil {
+		return nil, err
+	}
 	t, err := h.tokens.Revoke(req.Msg.Id)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
@@ -225,6 +300,9 @@ func (h *Handler) ListApprovals(ctx context.Context, req *connect.Request[relype
 }
 
 func (h *Handler) DecideApproval(ctx context.Context, req *connect.Request[relyperv1.DecideApprovalRequest]) (*connect.Response[relyperv1.Approval], error) {
+	if err := h.requireAdmin(ctx, "approval.decide"); err != nil {
+		return nil, err
+	}
 	user := currentUser(ctx)
 	if len(req.Msg.Reason) > 500 {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("reason is too long"))

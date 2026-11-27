@@ -24,11 +24,13 @@ const pending = create(ApprovalSchema, {
   previewJson: "{}",
 });
 
-const mockAll = (approvals = [pending]) => {
+const mockAll = (approvals = [pending], canAdminister = true) => {
   vi.mocked(relyperMcpService.getMcpStatus).mockResolvedValue(
     create(McpStatusSchema, {
       endpointPath: "/mcp",
       loginAvailable: true,
+      canAdminister,
+      adminRole: "backup_admin",
       scopes: [
         { name: "status:read", description: "Read status" },
         { name: "data:delete", description: "Delete", restricted: true },
@@ -82,6 +84,22 @@ describe("McpPage", () => {
     const req = vi.mocked(relyperMcpService.decideApproval).mock.calls[0][0];
     expect(req.id).toBe("apr_1");
     expect(req.approve).toBe(true);
+  });
+
+  it("hides decisions and token creation without the admin role", async () => {
+    mockAll([pending], false);
+    renderWithProviders(<McpPage />);
+    expect(
+      await screen.findByText("Delete snapshot 1234abcd from hosteurope"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("approval-approve")).toBeNull();
+    expect(screen.getAllByTestId("mcp-needs-admin")[0]).toHaveTextContent(
+      "backup_admin",
+    );
+    fireEvent.click(screen.getByText("Tokens"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("mcp-token-create")).toBeNull(),
+    );
   });
 
   it("shows a new token secret once", async () => {

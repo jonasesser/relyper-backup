@@ -80,8 +80,10 @@ Tracked in `ROADMAP.md`: role-based permissions (view, manage plans, manage
 repositories, run backups, browse contents, restore, delete, manage
 integrations), MCP authorization with server-side approval of restricted
 operations bound to exact parameters and expiry, a general audit log, secret
-redaction in logs, encrypted secret storage, optional OIDC (Relyper Identity),
-evaluation of append-only / immutable repositories.
+redaction in logs, encrypted secret storage, evaluation of append-only / immutable repositories.
+
+OIDC sign-in with Relyper Identity is available (#18); see `IDENTITY.md` for
+the checks it makes and its limits.
 
 ## Deployment hardening checklist
 

@@ -30,6 +30,8 @@ the plain restic CLI, without Relyper Backup.
   read status and set up repositories, SFTP, plans and schedules. Scoped
   tokens or OAuth sign-in; restore, deletion, prune and retention changes
   need your approval in the web UI; audit log (`MCP.md`).
+- Optional sign-in with Relyper Identity (OIDC) for the web UI and AI app
+  connections; local users stay as emergency access (`IDENTITY.md`).
 
 Planned (not built yet): roles in the web UI, Docker/Easypanel discovery,
 database dumps, backup coverage and guided disaster recovery. See
@@ -57,6 +59,7 @@ TLS reverse proxy before exposing it.
 | `ARCHITECTURE.md` | Components and where new features attach |
 | `ROADMAP.md` | Phases, status, open decisions |
 | `MCP.md` | MCP server: connecting clients, permissions, tools, approvals |
+| `IDENTITY.md` | Sign-in with Relyper Identity (OIDC), roles, emergency access |
 | `UPSTREAM.md` | How the fork tracks Backrest |
 | `AGENTS.md` | Rules for contributors and coding agents |
 | `CHANGELOG.md` | Relyper changes |

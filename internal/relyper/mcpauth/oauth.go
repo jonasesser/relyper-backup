@@ -32,7 +32,8 @@ import (
 // with mandatory PKCE S256, and rotating refresh tokens.
 //
 // The user signs in on the consent page with their Relyper Backup user name
-// and password and chooses the scopes. Access tokens are opaque and stored
+// and password, or through an external identity provider (Relyper Identity),
+// and chooses the scopes. Access tokens are opaque and stored
 // hashed in the Store, like personal access tokens.
 type OAuth struct {
 	Store *Store
@@ -44,11 +45,35 @@ type OAuth struct {
 	LoginAvailable func() bool
 	// MCPPath is the path of the protected MCP endpoint, e.g. "/mcp".
 	MCPPath string
+	// External offers sign-in through an identity provider; nil if none.
+	External *External
 
-	formKey []byte
-	mu      sync.Mutex
-	codes   map[string]*authCode
-	fails   map[string][]time.Time
+	formKey  []byte
+	mu       sync.Mutex
+	codes    map[string]*authCode
+	fails    map[string][]time.Time
+	consents map[string]*pendingConsent
+}
+
+// External is an identity provider the consent page can sign in with.
+type External struct {
+	// Name is shown on the button, e.g. "Relyper".
+	Name string
+	// Enabled reports whether the provider can be used right now.
+	Enabled func() bool
+	// Start redirects the browser to the provider. When the provider has
+	// answered, the integration calls OAuth.CompleteExternal with consentID.
+	Start func(w http.ResponseWriter, r *http.Request, consentID string)
+}
+
+func (e *External) enabled() bool { return e != nil && (e.Enabled == nil || e.Enabled()) }
+
+// pendingConsent is a consent waiting for the identity provider.
+type pendingConsent struct {
+	clientID, clientName string
+	params               authzParams
+	granted              []string
+	expires              time.Time
 }
 
 type authCode struct {
@@ -74,6 +99,7 @@ func (o *OAuth) Init() {
 	}
 	o.codes = map[string]*authCode{}
 	o.fails = map[string][]time.Time{}
+	o.consents = map[string]*pendingConsent{}
 }
 
 // Routes returns the unauthenticated HTTP routes of the authorization server.
@@ -343,12 +369,16 @@ func (o *OAuth) authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := pageData{
-		ClientName:   client.Name,
-		RedirectHost: redirectHost(p.RedirectURI),
-		Params:       p,
-		FormToken:    p.sign(o.formKey, time.Now().Add(formLifetime).Unix()),
-		NoLogin:      o.LoginAvailable != nil && !o.LoginAvailable(),
+		ClientName:    client.Name,
+		RedirectHost:  redirectHost(p.RedirectURI),
+		Params:        p,
+		FormToken:     p.sign(o.formKey, time.Now().Add(formLifetime).Unix()),
+		PasswordLogin: o.LoginAvailable == nil || o.LoginAvailable(),
 	}
+	if o.External.enabled() {
+		data.ExternalName = o.External.Name
+	}
+	data.NoLogin = !data.PasswordLogin && data.ExternalName == ""
 	for _, s := range AllScopes {
 		data.Scopes = append(data.Scopes, scopeChoice{ScopeInfo: s, Checked: slices.Contains(requested, s.Name)})
 	}
@@ -362,13 +392,23 @@ func (o *OAuth) authorize(w http.ResponseWriter, r *http.Request) {
 		o.page(w, http.StatusBadRequest, pageData{Error: "The form expired. Start the connection again from your AI app."})
 		return
 	}
-	if r.Form.Get("decision") != "approve" {
+	decision := r.Form.Get("decision")
+	if decision != "approve" && decision != "approve_external" {
 		o.Audit.Record(audit.Event{Actor: "client:" + client.ID, Source: "oauth", Action: "oauth.consent", Outcome: "denied", Message: client.Name, RemoteAddr: remoteAddr(r)})
 		fail("access_denied", "the user denied access")
 		return
 	}
 	if data.NoLogin {
 		o.page(w, http.StatusForbidden, data)
+		return
+	}
+	if decision == "approve_external" {
+		o.startExternal(w, r, client, p, data)
+		return
+	}
+	if !data.PasswordLogin {
+		data.Error = "Sign in with " + data.ExternalName + "."
+		o.page(w, http.StatusBadRequest, data)
 		return
 	}
 	ip := remoteAddr(r)
@@ -391,6 +431,12 @@ func (o *OAuth) authorize(w http.ResponseWriter, r *http.Request) {
 		o.page(w, http.StatusBadRequest, data)
 		return
 	}
+	o.issueCode(w, r, client.ID, client.Name, p, granted, user)
+}
+
+// issueCode stores an authorization code and sends the browser back to the
+// client.
+func (o *OAuth) issueCode(w http.ResponseWriter, r *http.Request, clientID, clientName string, p authzParams, granted []string, user string) {
 	code := randomSecret("rbk_code_")
 	o.mu.Lock()
 	now := time.Now()
@@ -399,10 +445,71 @@ func (o *OAuth) authorize(w http.ResponseWriter, r *http.Request) {
 			delete(o.codes, k)
 		}
 	}
-	o.codes[hashSecret(code)] = &authCode{clientID: client.ID, redirectURI: p.RedirectURI, codeChallenge: p.CodeChallenge, scopes: granted, user: user, resource: p.Resource, expires: now.Add(codeLifetime)}
+	o.codes[hashSecret(code)] = &authCode{clientID: clientID, redirectURI: p.RedirectURI, codeChallenge: p.CodeChallenge, scopes: granted, user: user, resource: p.Resource, expires: now.Add(codeLifetime)}
 	o.mu.Unlock()
-	o.Audit.Record(audit.Event{Actor: "user:" + user, Source: "oauth", Action: "oauth.consent", Outcome: "ok", Message: client.Name + ": " + strings.Join(granted, " "), RemoteAddr: ip})
+	o.Audit.Record(audit.Event{Actor: "user:" + user, Source: "oauth", Action: "oauth.consent", Outcome: "ok", Message: clientName + ": " + strings.Join(granted, " "), RemoteAddr: remoteAddr(r)})
 	redirectWith(w, r, p.RedirectURI, url.Values{"code": {code}, "state": {p.State}, "iss": {BaseURL(r)}})
+}
+
+// startExternal remembers the consent and hands over to the identity
+// provider. The chosen scopes are fixed now; the provider only says who the
+// user is.
+func (o *OAuth) startExternal(w http.ResponseWriter, r *http.Request, client *Client, p authzParams, data pageData) {
+	if data.ExternalName == "" {
+		data.Error = "Sign-in through an identity provider is not available."
+		o.page(w, http.StatusBadRequest, data)
+		return
+	}
+	granted, err := NormalizeScopes(r.Form["scope_choice"])
+	if err != nil || len(granted) == 0 {
+		data.Error = "Choose at least one permission."
+		o.page(w, http.StatusBadRequest, data)
+		return
+	}
+	id := randomSecret("rbk_consent_")
+	o.mu.Lock()
+	now := time.Now()
+	for k, c := range o.consents {
+		if now.After(c.expires) {
+			delete(o.consents, k)
+		}
+	}
+	if len(o.consents) >= 1000 {
+		o.mu.Unlock()
+		data.Error = "Too many connections are waiting. Try again in a few minutes."
+		o.page(w, http.StatusTooManyRequests, data)
+		return
+	}
+	o.consents[id] = &pendingConsent{clientID: client.ID, clientName: client.Name, params: p, granted: granted, expires: now.Add(formLifetime)}
+	o.mu.Unlock()
+	o.External.Start(w, r, id)
+}
+
+// CompleteExternal finishes a consent started with the identity provider.
+// user is the signed-in user's name; if errMsg is set, the sign-in failed and
+// errMsg is shown to the user.
+func (o *OAuth) CompleteExternal(w http.ResponseWriter, r *http.Request, consentID, user, errMsg string) {
+	o.mu.Lock()
+	c := o.consents[consentID]
+	delete(o.consents, consentID)
+	o.mu.Unlock()
+	if c == nil || time.Now().After(c.expires) {
+		o.page(w, http.StatusBadRequest, pageData{Error: "The connection request expired. Start the connection again from your AI app."})
+		return
+	}
+	if errMsg != "" || user == "" {
+		if errMsg == "" {
+			errMsg = "The sign-in failed."
+		}
+		o.Audit.Record(audit.Event{Actor: "client:" + c.clientID, Source: "oauth", Action: "oauth.login", Outcome: "error", Message: errMsg, RemoteAddr: remoteAddr(r)})
+		o.page(w, http.StatusForbidden, pageData{Error: errMsg + " Start the connection again from your AI app."})
+		return
+	}
+	if o.Store.GetClient(c.clientID) == nil {
+		o.page(w, http.StatusBadRequest, pageData{Error: "Unknown client. Remove the connector in your AI app and add it again."})
+		return
+	}
+	o.issueCode(w, r, c.clientID, c.clientName, c.params, c.granted, user)
 }
 
 func redirectHost(s string) string {
@@ -519,6 +626,10 @@ type pageData struct {
 	FormToken    string
 	Scopes       []scopeChoice
 	NoLogin      bool
+	// PasswordLogin: local users exist. ExternalName: the identity provider
+	// offered on the page, if any.
+	PasswordLogin bool
+	ExternalName  string
 }
 
 func (o *OAuth) page(w http.ResponseWriter, code int, d pageData) {
@@ -545,7 +656,7 @@ label{display:block}.scope{display:flex;gap:10px;align-items:flex-start;padding:
 .scope input{margin-top:4px}.tag{font-size:12px;color:var(--warn);font-weight:600}code{font-size:13px}
 .field{margin:12px 0}.field input{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--fg);font-size:15px}
 .buttons{display:flex;gap:10px;margin-top:16px}button{flex:1;padding:10px;border-radius:8px;border:1px solid var(--border);font-size:15px;cursor:pointer;background:var(--panel);color:var(--fg)}
-button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}.or{text-align:center;margin-top:16px}
 </style></head><body><main><div class="card">
 <h1>Connect to Relyper Backup</h1>
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
@@ -561,8 +672,10 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 <p><strong>Permissions</strong></p>
 {{range .Scopes}}<label class="scope"><input type="checkbox" name="scope_choice" value="{{.Name}}"{{if .Checked}} checked{{end}}>
 <span><code>{{.Name}}</code>{{if .Restricted}} <span class="tag">each use needs your approval</span>{{end}}<br><span class="muted">{{.Description}}</span></span></label>{{end}}
-<div class="field"><label>User name<input name="username" autocomplete="username" required></label></div>
-<div class="field"><label>Password<input name="password" type="password" autocomplete="current-password"></label></div>
-<div class="buttons"><button type="submit" name="decision" value="deny" formnovalidate>Deny</button><button class="primary" type="submit" name="decision" value="approve">Allow</button></div>
+{{if .ExternalName}}<div class="buttons"><button class="primary" type="submit" name="decision" value="approve_external" formnovalidate>Sign in with {{.ExternalName}} and allow</button></div>
+{{if .PasswordLogin}}<p class="muted or">or with a local user</p>{{end}}{{end}}
+{{if .PasswordLogin}}<div class="field"><label>User name<input name="username" autocomplete="username"{{if not .ExternalName}} required{{end}}></label></div>
+<div class="field"><label>Password<input name="password" type="password" autocomplete="current-password"></label></div>{{end}}
+<div class="buttons"><button type="submit" name="decision" value="deny" formnovalidate>Deny</button>{{if .PasswordLogin}}<button{{if not .ExternalName}} class="primary"{{end}} type="submit" name="decision" value="approve">Allow</button>{{end}}</div>
 </form>{{end}}{{end}}
 </div></main></body></html>`))

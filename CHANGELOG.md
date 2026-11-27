@@ -24,6 +24,10 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
   remote connectors; server-side approval for restore, deletion, prune,
   retention changes and host key trust; audit log; MCP page in the web UI.
   (#17)
+- Sign-in with Relyper Identity (OIDC) for the web UI and the MCP consent
+  page, with roles from the provider (`backup_admin` approves MCP requests
+  and manages tokens); local users stay as emergency access. See
+  `IDENTITY.md`. (#18)
 
 ### Changed
 

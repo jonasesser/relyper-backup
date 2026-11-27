@@ -74,6 +74,21 @@ const CopyButton = ({ text, label }: { text: string; label?: string }) => (
   </Button>
 );
 
+// Users signed in through the identity provider need the admin role to
+// decide approvals and manage tokens; local users always may.
+const NeedsAdmin = ({
+  status,
+  what,
+}: {
+  status: McpStatus | null;
+  what: string;
+}) => (
+  <Text fontSize="sm" color="fg.muted" data-testid="mcp-needs-admin">
+    Only users with the role{" "}
+    <Code fontSize="xs">{status?.adminRole || "admin"}</Code> can {what}.
+  </Text>
+);
+
 const ConnectSection = ({ status }: { status: McpStatus | null }) => {
   const url = endpointUrl(status, window.location.origin);
   const claudeCode = `claude mcp add --transport http relyper-backup ${url} --header "Authorization: Bearer <token>"`;
@@ -92,8 +107,11 @@ const ConnectSection = ({ status }: { status: McpStatus | null }) => {
             Claude, ChatGPT and other apps with remote connectors:
           </strong>{" "}
           add a custom connector with this URL. You will be asked to sign in
-          with your Relyper Backup user and choose the permissions. The server
-          must be reachable over HTTPS from the app.
+          {status?.identityProvider
+            ? ` with ${status.identityProvider} or a local Relyper Backup user`
+            : " with your Relyper Backup user"}{" "}
+          and choose the permissions. The server must be reachable over HTTPS
+          from the app.
         </Text>
         <Text>
           <strong>Clients with header configuration</strong> (Claude Code,
@@ -113,7 +131,7 @@ const ConnectSection = ({ status }: { status: McpStatus | null }) => {
             https://backup.example.com) so OAuth clients get the right address.
           </Text>
         )}
-        {status && !status.loginAvailable && (
+        {status && !status.loginAvailable && !status.identityProvider && (
           <Text color="red.500">
             No user account exists, so OAuth sign-in is not possible. Create a
             user in the settings first.
@@ -131,9 +149,11 @@ const ConnectSection = ({ status }: { status: McpStatus | null }) => {
 
 const ApprovalCard = ({
   a,
+  status,
   onDecided,
 }: {
   a: Approval;
+  status: McpStatus | null;
   onDecided: () => void;
 }) => {
   const [busy, setBusy] = useState(false);
@@ -208,7 +228,12 @@ const ApprovalCard = ({
           </Code>
         </Stack>
       )}
-      {a.status === "pending" && (
+      {a.status === "pending" && !status?.canAdminister && (
+        <Box mt={3}>
+          <NeedsAdmin status={status} what="approve or deny requests" />
+        </Box>
+      )}
+      {a.status === "pending" && status?.canAdminister && (
         <Flex gap={2} mt={3}>
           <Button
             size="sm"
@@ -236,9 +261,11 @@ const ApprovalCard = ({
 
 const ApprovalsSection = ({
   approvals,
+  status,
   reload,
 }: {
   approvals: Approval[];
+  status: McpStatus | null;
   reload: () => void;
 }) => {
   const pending = approvals.filter((a) => a.status === "pending");
@@ -255,7 +282,7 @@ const ApprovalsSection = ({
           </Text>
         )}
         {pending.map((a) => (
-          <ApprovalCard key={a.id} a={a} onDecided={reload} />
+          <ApprovalCard key={a.id} a={a} status={status} onDecided={reload} />
         ))}
         {done.length > 0 && (
           <Text fontSize="sm" fontWeight="medium" pt={2}>
@@ -263,7 +290,7 @@ const ApprovalsSection = ({
           </Text>
         )}
         {done.slice(0, 20).map((a) => (
-          <ApprovalCard key={a.id} a={a} onDecided={reload} />
+          <ApprovalCard key={a.id} a={a} status={status} onDecided={reload} />
         ))}
       </Stack>
     </SectionCard>
@@ -416,7 +443,11 @@ const TokensSection = ({
   return (
     <>
       <SectionCard title="New access token">
-        <NewTokenForm status={status} onCreated={reload} />
+        {status?.canAdminister ? (
+          <NewTokenForm status={status} onCreated={reload} />
+        ) : (
+          <NeedsAdmin status={status} what="create tokens" />
+        )}
       </SectionCard>
       <SectionCard
         title="Tokens and connected apps"
@@ -462,7 +493,7 @@ const TokensSection = ({
                     <Table.Cell>
                       {t.revokedAtMs ? (
                         <Badge>revoked</Badge>
-                      ) : (
+                      ) : !status?.canAdminister ? null : (
                         <Button
                           size="xs"
                           variant="outline"
@@ -632,7 +663,11 @@ export const McpPage = () => {
           <TabsTrigger value="audit">Audit log</TabsTrigger>
         </TabsList>
         <TabsContent value="approvals">
-          <ApprovalsSection approvals={approvals} reload={reload} />
+          <ApprovalsSection
+            approvals={approvals}
+            status={status}
+            reload={reload}
+          />
         </TabsContent>
         <TabsContent value="connect">
           <ConnectSection status={status} />

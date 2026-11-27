@@ -53,6 +53,14 @@ func RequireAuthentication(h http.Handler, auth *Authenticator) http.Handler {
 			return
 		}
 
+		// relyper: sessions of users signed in through Relyper Identity (OIDC).
+		if auth.external != nil {
+			if ctx, user, ok := auth.external(r.Context(), token); ok {
+				h.ServeHTTP(w, r.WithContext(context.WithValue(ctx, UserContextKey, user)))
+				return
+			}
+		}
+
 		user, err := auth.VerifyJWT(token)
 		if err != nil {
 			zap.S().Warnf("auth middleware blocked bad JWT: %v", err)

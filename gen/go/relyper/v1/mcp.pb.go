@@ -201,8 +201,14 @@ type McpStatus struct {
 	LoginAvailable   bool                   `protobuf:"varint,5,opt,name=login_available,json=loginAvailable,proto3" json:"login_available,omitempty"` // users exist, so OAuth sign-in works
 	PendingApprovals int32                  `protobuf:"varint,6,opt,name=pending_approvals,json=pendingApprovals,proto3" json:"pending_approvals,omitempty"`
 	AuditLogPath     string                 `protobuf:"bytes,7,opt,name=audit_log_path,json=auditLogPath,proto3" json:"audit_log_path,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// The signed-in user may approve requests and create or revoke tokens.
+	CanAdminister bool `protobuf:"varint,8,opt,name=can_administer,json=canAdminister,proto3" json:"can_administer,omitempty"`
+	// Name of the identity provider for sign-in ("Relyper"), empty if off.
+	IdentityProvider string `protobuf:"bytes,9,opt,name=identity_provider,json=identityProvider,proto3" json:"identity_provider,omitempty"`
+	// Role a provider user needs to administer MCP (e.g. backup_admin).
+	AdminRole     string `protobuf:"bytes,10,opt,name=admin_role,json=adminRole,proto3" json:"admin_role,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *McpStatus) Reset() {
@@ -280,6 +286,27 @@ func (x *McpStatus) GetPendingApprovals() int32 {
 func (x *McpStatus) GetAuditLogPath() string {
 	if x != nil {
 		return x.AuditLogPath
+	}
+	return ""
+}
+
+func (x *McpStatus) GetCanAdminister() bool {
+	if x != nil {
+		return x.CanAdminister
+	}
+	return false
+}
+
+func (x *McpStatus) GetIdentityProvider() string {
+	if x != nil {
+		return x.IdentityProvider
+	}
+	return ""
+}
+
+func (x *McpStatus) GetAdminRole() string {
+	if x != nil {
+		return x.AdminRole
 	}
 	return ""
 }
@@ -1155,7 +1182,7 @@ const file_relyper_v1_mcp_proto_rawDesc = "" +
 	"\n" +
 	"restricted\x18\x03 \x01(\bR\n" +
 	"restricted\x12 \n" +
-	"\vdescription\x18\x04 \x01(\tR\vdescription\"\xa4\x02\n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\"\x97\x03\n" +
 	"\tMcpStatus\x12#\n" +
 	"\rendpoint_path\x18\x01 \x01(\tR\fendpointPath\x12\x1d\n" +
 	"\n" +
@@ -1164,7 +1191,12 @@ const file_relyper_v1_mcp_proto_rawDesc = "" +
 	"\x05tools\x18\x04 \x03(\v2\x13.relyper.v1.McpToolR\x05tools\x12'\n" +
 	"\x0flogin_available\x18\x05 \x01(\bR\x0eloginAvailable\x12+\n" +
 	"\x11pending_approvals\x18\x06 \x01(\x05R\x10pendingApprovals\x12$\n" +
-	"\x0eaudit_log_path\x18\a \x01(\tR\fauditLogPath\"\x13\n" +
+	"\x0eaudit_log_path\x18\a \x01(\tR\fauditLogPath\x12%\n" +
+	"\x0ecan_administer\x18\b \x01(\bR\rcanAdminister\x12+\n" +
+	"\x11identity_provider\x18\t \x01(\tR\x10identityProvider\x12\x1d\n" +
+	"\n" +
+	"admin_role\x18\n" +
+	" \x01(\tR\tadminRole\"\x13\n" +
 	"\x11ListTokensRequest\"\xd7\x02\n" +
 	"\bMcpToken\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -15,6 +16,14 @@ import (
 type Authenticator struct {
 	config config.ConfigStore
 	key    []byte
+	// relyper: verifies sessions of users signed in through Relyper Identity (OIDC).
+	external func(ctx context.Context, token string) (context.Context, *v1.User, bool)
+}
+
+// relyper: SetExternalVerifier registers a verifier for bearer tokens that are
+// not issued by this Authenticator. It is consulted before VerifyJWT.
+func (a *Authenticator) SetExternalVerifier(f func(ctx context.Context, token string) (context.Context, *v1.User, bool)) {
+	a.external = f
 }
 
 func NewAuthenticator(key []byte, config config.ConfigStore) *Authenticator {

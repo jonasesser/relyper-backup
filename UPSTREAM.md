@@ -59,6 +59,8 @@ Keep this list current; it is the merge checklist.
 | `webui/src/features/settings/SettingsModal.tsx` | product name in one hint | #14 |
 | `webui/src/app/App.tsx` | Relyper logo, version opens the About dialog; sidebar entry and route `/mcp` for the MCP page | #14, #17 |
 | `webui/index.html` | title and favicon | #14 |
+| `internal/auth/auth.go`, `internal/auth/middleware.go` | `SetExternalVerifier`: bearer tokens of Relyper Identity sessions are checked before the upstream JWT | #18 |
+| `webui/src/features/auth/LoginModal.tsx` | renders `RelyperLogin` (sign-in with Relyper Identity) above the password fields | #18 |
 | `webui/package.json` | `start`, `build`, `build-windows`, `compile-i18n` run `relyper/brand-messages.mjs` first | #14 |
 | `webui/project.inlang/settings.json` | vendored message-format plugin; messages read from `.relyper-messages/` | #3, #14 |
 | `webui/.gitignore`, `.dockerignore` | generated message catalogs; Docker build context | #11, #14 |

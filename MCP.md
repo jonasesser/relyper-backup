@@ -55,6 +55,7 @@ stored only as SHA-256 hashes in `<data>/relyper/mcp-auth.json` (mode 0600):
    - access tokens (`rbk_oat_…`) live 1 hour; refresh tokens (`rbk_ort_…`)
      30 days and rotate on every use;
    - the consent page asks for the Relyper Backup user name and password,
+     or offers sign-in with Relyper Identity (OIDC, see `IDENTITY.md`),
      shows where the user will be sent back to, and lets the user untick
      permissions. Five failed sign-ins per minute and address are allowed.
    - Client ID metadata documents (the newer alternative to dynamic
@@ -158,8 +159,9 @@ are not recorded. The MCP page shows the latest 200 entries.
 
 ## Limits
 
-- No roles in the web UI yet: every web UI user can create tokens and approve
-  requests (upstream Backrest has no roles; see `ROADMAP.md`).
+- Roles exist only for users who sign in with Relyper Identity: only the admin
+  role (`backup_admin`) may approve requests and create or revoke tokens.
+  Every local user may do both (local users are the emergency access).
 - If authentication is disabled in the settings, OAuth sign-in is not
   possible and anyone reaching the web UI can create tokens.
 - `modify_retention_policy` shows the current and the new policy but does not

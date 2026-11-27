@@ -10,6 +10,7 @@ import { Field } from "../../components/ui/field";
 import { InputGroup } from "../../components/ui/input-group";
 import { Input, Stack } from "@chakra-ui/react";
 import { LuUser, LuLock } from "react-icons/lu";
+import { RelyperLogin } from "../../relyper/identity/RelyperLogin"; // relyper
 
 export const LoginModal = () => {
   let defaultCreds = create(LoginRequestSchema, {});
@@ -75,6 +76,8 @@ export const LoginModal = () => {
         </Button>
       }
     >
+      {/* relyper: sign-in through Relyper Identity (OIDC) */}
+      <RelyperLogin />
       <form onSubmit={handleSubmit}>
         <Stack direction="row" gap={4}>
           <Field

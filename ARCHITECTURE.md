@@ -60,6 +60,7 @@ is planned but not built is marked as such; `ROADMAP.md` tracks it.
 | `internal/relyper/mcpauth` | Personal access tokens and OAuth 2.1 authorization server (metadata, dynamic client registration, PKCE, consent page, refresh rotation); store `<data>/relyper/mcp-auth.json`. |
 | `internal/relyper/approval` | In-memory approval requests bound to tool, parameter hash and token; single use, 15 minutes. |
 | `internal/relyper/audit` | JSON Lines audit log `<data>/relyper/audit.jsonl`. |
+| `internal/relyper/identity` | Sign-in with Relyper Identity (OIDC): `/auth/oidc/*`, PKCE/state/nonce, ID token check (RS256 via JWKS), roles, web UI session tokens; see `IDENTITY.md`. |
 | `internal/relyper/mcpapi` | Wiring into the HTTP server and the `relyper.v1.RelyperMcp` service for the web UI (tokens, approvals, audit). |
 | `proto/relyper/v1` | Relyper API definitions, separate from upstream's `v1` package. |
 
@@ -117,7 +118,7 @@ of these categories on failure: `invalid_input`, `dns_failure`,
 
 | Component | Where it will live | Notes |
 |---|---|---|
-| Roles and permissions | `internal/relyper/authz` | Upstream has no roles: every signed-in user is an administrator (and can create MCP tokens and approve MCP requests). |
+| Roles and permissions | `internal/relyper/authz` | Upstream has no roles. Users signed in with Relyper Identity need the admin role for MCP approvals and tokens (#18); the Backrest pages have no roles yet. |
 | Docker / Easypanel discovery | `internal/relyper/discovery` | Docker Engine API, read-only, optional; Easypanel paths verified on a real host first. |
 | Database dumps | `internal/relyper/dbdump` | pg_dump / mysqldump / mariadb-dump / Redis, staged in a dedicated directory, verified. |
 | Coverage analysis, DR inventory | `internal/relyper/coverage`, `internal/relyper/dr` | Based on completed operations, not on configuration alone. |

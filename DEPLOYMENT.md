@@ -82,6 +82,7 @@ documentation; mount what you need.
 The `BACKREST_*` names are kept from upstream so existing Backrest
 configurations and documentation keep working.
 
+| `RELYPER_OIDC_*` | unset | Sign-in with Relyper Identity; see `IDENTITY.md`. |
 | `RELYPER_PUBLIC_URL` | unset | Public HTTPS address, e.g. `https://backup.example.com`. Used in the OAuth metadata of the MCP server; without it the address is derived from the request headers. |
 
 The MCP endpoint `/mcp` and the OAuth endpoints (`/.well-known/oauth-*`,

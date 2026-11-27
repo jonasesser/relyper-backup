@@ -79,7 +79,8 @@ Until then, `DISASTER-RECOVERY.md` explains how to dump databases from a hook.
 
 - Simpler repository and plan setup.
 - Dashboard and UX refinement.
-- Optional Relyper Identity (OIDC).
+- Optional Relyper Identity (OIDC) – done (#18, `IDENTITY.md`). Still open:
+  roles for the Backrest pages themselves.
 - More notification channels.
 - Deployment templates (Easypanel template, compose variants).
 
