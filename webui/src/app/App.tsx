@@ -58,7 +58,8 @@ import { uiBuildVersion } from "../state/buildcfg";
 import { ActivityBar } from "../components/layout/ActivityBar";
 import { OperationStatus } from "../../gen/ts/v1/operations_pb";
 import { useResourceStatus } from "../api/resourceStatus";
-import LogoSvg from "../../assets/logo.svg";
+import LogoSvg from "../../assets/relyper-logo.svg"; // relyper: branding
+import { AboutModal } from "../relyper/about/AboutModal"; // relyper
 import { keyBy } from "../lib/util";
 import { Code } from "@connectrpc/connect";
 import { LoginModal } from "../features/auth/LoginModal";
@@ -877,6 +878,7 @@ const Sidebar = () => {
 export const App: React.FC = () => {
   const navigate = useNavigate();
   const [config, setConfig] = useConfig();
+  const showModal = useShowModal(); // relyper: About dialog
 
   return (
     <Flex direction="column" h="100vh">
@@ -894,16 +896,22 @@ export const App: React.FC = () => {
           <MobileNavTrigger />
         </Box>
         <Box as="a" cursor="pointer" onClick={() => navigate("/")} mr={4}>
-          <img src={LogoSvg} style={{ height: "30px", marginBottom: "-4px" }} />
+          <img
+            src={LogoSvg}
+            alt="Relyper Backup"
+            style={{ height: "30px", marginBottom: "-4px" }}
+          />
         </Box>
 
         <Flex align="baseline" gap={4}>
+          {/* relyper: version opens the About dialog with upstream attribution */}
           <Link
-            href="https://github.com/garethgeorge/backrest"
-            target="_blank"
+            as="button"
+            onClick={() => showModal(<AboutModal />)}
             color="whiteAlpha.700"
             fontSize="xs"
             display={{ base: "none", lg: "block" }}
+            data-testid="relyper-about-link"
           >
             {uiBuildVersion}
           </Link>

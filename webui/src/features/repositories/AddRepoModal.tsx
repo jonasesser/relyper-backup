@@ -189,7 +189,7 @@ const isHostKeyError = (message: string | undefined): boolean => {
 const hostKeyUntrustedContent = (
   <>
     The host key for this SFTP server is not known or does not match the
-    recorded key, so Backrest will not connect.
+    recorded key, so Relyper Backup will not connect.
     <br />
     <br />
     To proceed, manually add the correct host key to your known_hosts file, or
@@ -905,7 +905,7 @@ export const AddRepoModal = ({
             <SectionCard
               icon={<FiLink size={16} />}
               title="Connection"
-              description="Where the repo lives and how Backrest authenticates."
+              description="Where the repo lives and how Relyper Backup authenticates."
             >
               <Stack gap={4}>
                 <Field

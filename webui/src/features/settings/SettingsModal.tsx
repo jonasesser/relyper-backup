@@ -323,7 +323,7 @@ export const SettingsModal = () => {
               checked={getField(["auth", "disabled"]) || false}
               onChange={(v) => updateField(["auth", "disabled"], v)}
               label={m.settings_auth_disable()}
-              hint="When disabled, no login is required to access Backrest."
+              hint="When disabled, no login is required to access Relyper Backup."
             />
 
             <Field label={m.settings_auth_users()} required>
