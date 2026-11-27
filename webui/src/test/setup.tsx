@@ -8,6 +8,7 @@ import { cleanup } from "@testing-library/react";
 // import: src/api/oplog.ts and src/state/peerStates.ts open streaming
 // connections at import time against the real client.
 vi.mock("@/api/client", () => import("./mocks/client"));
+vi.mock("@/relyper/api", () => import("../relyper/test/mockApi")); // relyper
 
 // --- jsdom polyfills -------------------------------------------------------
 

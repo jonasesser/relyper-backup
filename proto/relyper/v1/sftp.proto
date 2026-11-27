@@ -1,0 +1,124 @@
+syntax = "proto3";
+
+// relyper: Relyper Backup addition, not part of upstream Backrest.
+//
+// SFTP repository diagnostics: explicit host key trust and a step-by-step
+// connection test that tells DNS, network, host key, algorithm,
+// authentication, permission and repository problems apart.
+package relyper.v1;
+
+option go_package = "github.com/garethgeorge/backrest/gen/go/relyper/v1";
+
+service RelyperSftp {
+  // Fetches the host keys the server presents and reports for each one
+  // whether it is already trusted. Never changes known_hosts.
+  rpc ScanHostKeys(ScanHostKeysRequest) returns (ScanHostKeysResponse) {}
+
+  // Adds one host key to Relyper Backup's known_hosts file. The key is
+  // fetched again and only added when its SHA-256 fingerprint equals the one
+  // the user confirmed. A different key already recorded for the host is
+  // never replaced.
+  rpc TrustHostKey(TrustHostKeyRequest) returns (TrustHostKeyResponse) {}
+
+  // Runs the connection test. Never changes known_hosts. The optional write
+  // test creates and removes one small file in the remote directory.
+  rpc TestConnection(TestConnectionRequest) returns (TestConnectionResponse) {}
+}
+
+message ScanHostKeysRequest {
+  string host = 1;
+  int32 port = 2; // 0 means 22
+}
+
+enum HostKeyStatus {
+  HOST_KEY_STATUS_UNSPECIFIED = 0;
+  HOST_KEY_STATUS_TRUSTED = 1;   // recorded in known_hosts
+  HOST_KEY_STATUS_UNKNOWN = 2;   // not recorded; confirm the fingerprint before trusting it
+  HOST_KEY_STATUS_MISMATCH = 3;  // a different key of this type is recorded: possible attack or reinstalled server
+  HOST_KEY_STATUS_REVOKED = 4;   // marked @revoked in known_hosts
+}
+
+message HostKey {
+  string type = 1;                // e.g. ssh-ed25519
+  string fingerprint_sha256 = 2;  // OpenSSH format, e.g. SHA256:abc...
+  HostKeyStatus status = 3;
+}
+
+message ScanHostKeysResponse {
+  repeated HostKey keys = 1;
+  string known_hosts_path = 2;
+  // Set when no key could be fetched.
+  Diagnostic error = 3;
+}
+
+message TrustHostKeyRequest {
+  string host = 1;
+  int32 port = 2;
+  string type = 3;
+  string fingerprint_sha256 = 4;
+}
+
+message TrustHostKeyResponse {
+  string known_hosts_path = 1;
+  bool already_trusted = 2;
+}
+
+message TestConnectionRequest {
+  string host = 1;
+  int32 port = 2;
+  string username = 3;
+  // Path of a private key file on the Relyper Backup host.
+  string identity_file = 4;
+  // Used for this test only. Never stored or logged. restic itself needs
+  // key-based authentication for unattended backups.
+  string password = 5;
+  // Remote repository directory as written in the restic URI.
+  string remote_path = 6;
+  bool write_test = 7;
+  int32 timeout_seconds = 8; // 0 means 15
+}
+
+enum StepStatus {
+  STEP_STATUS_UNSPECIFIED = 0;
+  STEP_STATUS_OK = 1;
+  STEP_STATUS_WARNING = 2;
+  STEP_STATUS_FAILED = 3;
+  STEP_STATUS_SKIPPED = 4;
+}
+
+message Diagnostic {
+  // Stable machine-readable category, e.g. dns_failure, host_key_unknown,
+  // authentication_failed. See internal/relyper/sshdiag.
+  string category = 1;
+  string message = 2;
+  string hint = 3;
+}
+
+message TestStep {
+  string name = 1; // dns, tcp, host_key, authentication, sftp, remote_directory, write_test, repository, storage
+  StepStatus status = 2;
+  string message = 3;
+  string hint = 4;
+  string category = 5;
+  int64 duration_ms = 6;
+}
+
+enum RepositoryState {
+  REPOSITORY_STATE_UNSPECIFIED = 0;
+  REPOSITORY_STATE_EXISTING = 1;       // a restic repository is already there
+  REPOSITORY_STATE_EMPTY = 2;          // empty directory, ready for initialization
+  REPOSITORY_STATE_MISSING = 3;        // directory does not exist yet; restic init creates it
+  REPOSITORY_STATE_NOT_REPOSITORY = 4; // directory contains other data
+}
+
+message TestConnectionResponse {
+  bool ok = 1;
+  repeated TestStep steps = 2;
+  // First failure, if any.
+  Diagnostic error = 3;
+  RepositoryState repository_state = 4;
+  string resolved_path = 5;
+  // Only when the server supports statvfs@openssh.com; -1 when unknown.
+  int64 free_bytes = 6;
+  int64 total_bytes = 7;
+}

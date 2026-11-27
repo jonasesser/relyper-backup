@@ -327,12 +327,11 @@ func (s *BackrestHandler) SetupSftp(ctx context.Context, req *connect.Request[v1
 		return nil, fmt.Errorf("failed to generate key: %w", err)
 	}
 
-	// 2. Scan remote host key into known_hosts (network, non-fatal)
+	// 2. relyper: the host key is no longer added blindly with ssh-keyscan
+	// (trust on first use without any check). The UI fetches the keys with
+	// relyper.v1.RelyperSftp/ScanHostKeys and the user confirms the
+	// fingerprint before RelyperSftp/TrustHostKey writes known_hosts.
 	var hostKeyWarning string
-	if err := sftputil.AddHostKey(host, port, env.SSHDir()); err != nil {
-		zap.S().Warnf("SFTP host key scan failed for %s: %v", host, err)
-		hostKeyWarning = fmt.Sprintf("Could not scan host key (%v). Add the host key to known_hosts manually or ensure the host is reachable.", err)
-	}
 
 	return connect.NewResponse(&v1.SetupSftpResponse{
 		PublicKey:      string(pubBytes),

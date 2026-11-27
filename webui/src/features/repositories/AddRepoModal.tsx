@@ -35,6 +35,7 @@ import {
   ScheduleDefaultsDaily,
 } from "../../components/common/ScheduleFormItem";
 import { isWindows } from "../../state/buildcfg";
+import { SftpDiagnostics } from "../../relyper/sftp/SftpDiagnostics"; // relyper
 import { create, fromJson, toJson } from "@bufbuild/protobuf";
 import * as m from "../../paraglide/messages";
 import { Button } from "../../components/ui/button";
@@ -192,8 +193,8 @@ const hostKeyUntrustedContent = (
     <br />
     <br />
     To proceed, manually add the correct host key to your known_hosts file, or
-    use the "Setup SSH Key" section below to generate a key and scan the host
-    key automatically.
+    use "Fetch host key" below to compare the server's fingerprint and trust
+    it explicitly.
   </>
 );
 
@@ -280,10 +281,9 @@ const SftpConfigSection = ({
               <Stack gap={3} p={2}>
                 <CText fontSize="sm">
                   Click "Generate Key" to create an SSH key pair for this host.
-                  Backrest will attempt to scan the host key into known_hosts
-                  automatically. You will then need to add the generated public
-                  key to <Code>~/.ssh/authorized_keys</Code> on the remote
-                  server.
+                  You will then need to add the generated public key to{" "}
+                  <Code>~/.ssh/authorized_keys</Code> on the remote server and
+                  confirm the server's host key below.
                 </CText>
                 <Button
                   size="sm"
@@ -386,6 +386,15 @@ const SftpConfigSection = ({
           onChange={(e) => onChangeKnownHostsPath(e.target.value)}
         />
       </Field>
+
+      {/* relyper: explicit host key trust and connection diagnostics */}
+      <SftpDiagnostics
+        uri={uri}
+        port={port}
+        identityFile={identityFile}
+        knownHostsPath={knownHostsPath}
+        onChangeKnownHostsPath={onChangeKnownHostsPath}
+      />
     </Stack>
   );
 };

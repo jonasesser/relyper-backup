@@ -32,6 +32,7 @@ import (
 	"github.com/garethgeorge/backrest/internal/oplog/sqlitestore"
 	"github.com/garethgeorge/backrest/internal/orchestrator"
 	"github.com/garethgeorge/backrest/internal/relyper/health"
+	"github.com/garethgeorge/backrest/internal/relyper/sftpapi"
 	"github.com/garethgeorge/backrest/internal/resticinstaller"
 	"github.com/garethgeorge/backrest/webui"
 	"github.com/mattn/go-colorable"
@@ -275,6 +276,7 @@ func newRootMux(
 	syncStatePath, syncStateHandlerUnauthed := v1syncconnect.NewBackrestSyncStateServiceHandler(syncStateHandler)
 	authedMux.Handle(syncStatePath, syncStateHandlerUnauthed)
 	authedMux.Handle("/metrics", metric.GetRegistry().Handler())
+	authedMux.Handle(sftpapi.New(env.SSHDir())) // relyper: SFTP host key trust and connection diagnostics
 
 	// Unauthenticated routes
 	unauthedMux := http.NewServeMux()

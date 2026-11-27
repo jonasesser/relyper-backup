@@ -25,7 +25,7 @@ const fetch = (
   return window.fetch(input, init);
 };
 
-const transport = createConnectTransport({
+export const transport = createConnectTransport({ // relyper: exported for src/relyper/api.ts
   baseUrl: backendUrl,
   useBinaryFormat: true,
   fetch: fetch as typeof globalThis.fetch,
