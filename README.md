@@ -64,7 +64,8 @@ TLS reverse proxy before exposing it.
 | `SECURITY.md` | What is in place, threat model, hardening checklist |
 | `DISASTER-RECOVERY.md` | Restore with the UI or the plain restic CLI |
 | `ARCHITECTURE.md` | Components and where new features attach |
-| `ROADMAP.md` | Phases, status, open decisions |
+| `docs/CONCEPT.md` | The original product concept (source specification) |
+| `ROADMAP.md` | Phases, status, open decisions, gaps against the concept |
 | `MCP.md` | MCP server: connecting clients, permissions, tools, approvals |
 | `IDENTITY.md` | Sign-in with Relyper Identity (OIDC), roles, emergency access |
 | `UPSTREAM.md` | How the fork tracks Backrest |

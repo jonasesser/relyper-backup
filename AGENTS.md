@@ -2,8 +2,11 @@
 
 Relyper Backup is a downstream fork of Backrest (Go backend, React/Chakra web
 UI, restic as the backup engine). Read `UPSTREAM.md` before changing upstream
-files and `ARCHITECTURE.md` before adding features. Several agent sessions may
-work on this repository at the same time.
+files and `ARCHITECTURE.md` before adding features. The product
+specification is the owner's concept in `docs/CONCEPT.md` (kept verbatim; do
+not edit it). `ROADMAP.md` records what is done and where the implementation
+still differs from it. Several agent sessions may work on this repository at
+the same time.
 
 ## Issues and commits
 
