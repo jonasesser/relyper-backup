@@ -24,6 +24,8 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 
 - The i18n plugin is vendored and checksummed instead of loaded from a CDN at
   build time. (#3)
+- Upstream's release-please workflow removed; it requires Conventional
+  Commits and failed on every push. (#16)
 
 ### Security
 

@@ -84,7 +84,7 @@ Until then, `DISASTER-RECOVERY.md` explains how to dump databases from a hook.
 
 | Topic | State |
 |---|---|
-| Upstream GitHub workflows and dependabot | Still active from the import: release-please fails, dependabot opened PRs. Proposal: disable or replace with a Relyper CI (build, test, image). Needs the owner's decision. |
+| Upstream GitHub workflows and dependabot | release-please removed (#16). The other upstream workflows and dependabot are still active; proposal: replace with a Relyper CI (build, test, image). Needs the owner's decision. |
 | Registry for the image | Not decided; today the image is built from source (`DEPLOYMENT.md`). |
 | Append-only / immutable storage | To be evaluated (rest-server `--append-only`, S3 Object Lock). See `SECURITY.md`. |
 | Encrypted secret storage | Planned; today `config.json` holds secrets in plaintext (upstream). |

@@ -62,7 +62,8 @@ Keep this list current; it is the merge checklist.
 | `webui/package.json` | `start`, `build`, `build-windows`, `compile-i18n` run `relyper/brand-messages.mjs` first | #14 |
 | `webui/project.inlang/settings.json` | vendored message-format plugin; messages read from `.relyper-messages/` | #3, #14 |
 | `webui/.gitignore`, `.dockerignore` | generated message catalogs; Docker build context | #11, #14 |
-| `README.md`, `CHANGELOG.md` | replaced by Relyper versions; upstream versions are in Git history and upstream | docs |
+| `README.md`, `CHANGELOG.md` | replaced by Relyper versions; upstream versions are in Git history and upstream | #15 |
+| `.github/workflows/release-please.yml` | deleted (needs Conventional Commits) | #16 |
 
 Not changed on purpose: the Go module path `github.com/garethgeorge/backrest`,
 the `BACKREST_*` environment variables, config file format, API package
@@ -81,6 +82,7 @@ Backrest installations and documentation.
    ```
 3. Resolve conflicts:
    - `README.md`, `CHANGELOG.md`: keep ours.
+   - `.github/workflows/release-please.yml`: keep it deleted (#16).
    - Hook point files from the table above: take upstream's version, then
      re-apply the `relyper:` lines.
    - `webui/pnpm-lock.yaml`: take upstream's, then `pnpm install` (pnpm 9)
@@ -137,8 +139,13 @@ exists (upstream CI creates a fake one).
 
 ## Upstream CI and release workflows
 
-`.github/` is still upstream's. Release Please, the release workflows, the
-docs deployment and the restic update workflow expect upstream's secrets and
+`.github/workflows/release-please.yml` is removed (#16): it builds releases
+from Conventional Commit messages, which this repository does not use
+(`#N Titel`), so it failed on every push. **When merging upstream, delete it
+again if it comes back.** Relyper releases will come from an own CI.
+
+The rest of `.github/` is still upstream's. The release workflows, the docs
+deployment and the restic update workflow expect upstream's secrets and
 infrastructure and fail or do nothing useful in this repository; Dependabot
 opens upstream-style update PRs. Whether to disable them is an open decision
 (see `ROADMAP.md`).
