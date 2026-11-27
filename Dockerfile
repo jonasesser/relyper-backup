@@ -41,7 +41,8 @@ RUN go build -trimpath \
       -ldflags "-s -w -X main.version=${RELYPER_VERSION} -X main.commit=${RELYPER_COMMIT}" \
       -o /out/backrest ./cmd/backrest && \
     go build -trimpath -ldflags "-s -w" -o /out/docker-entrypoint ./cmd/docker-entrypoint && \
-    go build -trimpath -ldflags "-s -w" -o /out/relyper-healthcheck ./cmd/relyper-healthcheck
+    go build -trimpath -ldflags "-s -w" -o /out/relyper-healthcheck ./cmd/relyper-healthcheck && \
+    go build -trimpath -ldflags "-s -w" -o /out/relyper-dbdump ./cmd/relyper-dbdump
 # Download the restic version this release is tested with. The installer
 # verifies the SHA-256 sums and their signature before using the binary.
 RUN XDG_DATA_HOME=/tmp/deps /out/backrest --install-deps-only && \
@@ -66,6 +67,7 @@ COPY --from=server /out/restic /usr/local/bin/restic
 COPY --from=server /out/backrest /backrest
 COPY --from=server /out/docker-entrypoint /docker-entrypoint
 COPY --from=server /out/relyper-healthcheck /usr/local/bin/relyper-healthcheck
+COPY --from=server /out/relyper-dbdump /usr/local/bin/relyper-dbdump
 
 # Defaults also applied by /docker-entrypoint when unset.
 ENV BACKREST_PORT=0.0.0.0:9898 \

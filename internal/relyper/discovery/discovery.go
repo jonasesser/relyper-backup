@@ -1,0 +1,437 @@
+// Package discovery is Relyper-owned: it builds an inventory of the
+// applications running on a Docker host (Compose projects, Swarm stacks,
+// Easypanel projects, single containers), their data (volumes and bind
+// mounts) and their databases. It only reads from the Docker Engine API.
+package discovery
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/garethgeorge/backrest/internal/relyper/docker"
+)
+
+// Kinds of applications.
+const (
+	KindCompose    = "compose"
+	KindStack      = "swarm_stack"
+	KindEasypanel  = "easypanel"
+	KindStandalone = "container"
+)
+
+// Database engines with dump support.
+const (
+	EnginePostgres = "postgres"
+	EngineMySQL    = "mysql"
+	EngineMariaDB  = "mariadb"
+	EngineMongo    = "mongodb"
+	EngineRedis    = "redis"
+)
+
+// Inventory is the result of a discovery run.
+type Inventory struct {
+	GeneratedAt time.Time `json:"generated_at"`
+	Docker      Host      `json:"docker"`
+	Apps        []App     `json:"apps"`
+}
+
+// Host describes the Docker daemon.
+type Host struct {
+	Available bool   `json:"available"`
+	Endpoint  string `json:"endpoint"`
+	Version   string `json:"version,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Swarm     bool   `json:"swarm"`
+	Easypanel bool   `json:"easypanel"`
+	Error     string `json:"error,omitempty"`
+}
+
+// App is a group of services that belong together.
+type App struct {
+	ID       string    `json:"id"` // e.g. compose:shop, swarm_stack:crm, easypanel:blog, container:nginx
+	Name     string    `json:"name"`
+	Kind     string    `json:"kind"`
+	Services []Service `json:"services"`
+	// Notes are facts worth knowing (assumptions, data on other nodes).
+	Notes []string `json:"notes,omitempty"`
+}
+
+// Service is one container (or Swarm service) of an app.
+type Service struct {
+	Name         string    `json:"name"`
+	Container    string    `json:"container,omitempty"` // current container name, empty if none on this node
+	ContainerID  string    `json:"container_id,omitempty"`
+	Image        string    `json:"image"`
+	State        string    `json:"state"` // running, exited, …, or "remote" for a Swarm service without a local task
+	SwarmService string    `json:"swarm_service,omitempty"`
+	Data         []Data    `json:"data,omitempty"`
+	Database     *Database `json:"database,omitempty"`
+}
+
+// Data is a volume or bind mount of a service.
+type Data struct {
+	Type          string `json:"type"` // volume or bind
+	Name          string `json:"name,omitempty"`
+	HostPath      string `json:"host_path"`
+	ContainerPath string `json:"container_path"`
+	ReadOnly      bool   `json:"read_only"`
+	// BackupPath is where Relyper Backup sees the data; empty if the host
+	// path is not mounted into Relyper Backup.
+	BackupPath string `json:"backup_path,omitempty"`
+	// DatabaseFiles marks the live files of a database. They are not backed
+	// up as files (inconsistent while running); the database is dumped.
+	DatabaseFiles bool `json:"database_files,omitempty"`
+}
+
+// Database is a detected database server.
+type Database struct {
+	Engine string `json:"engine"`
+	// DumpSupported: Relyper Backup can dump it consistently.
+	DumpSupported bool `json:"dump_supported"`
+	// Credentials names the environment variables the dump reads from the
+	// container (names only, never values).
+	Credentials []string `json:"credentials,omitempty"`
+}
+
+// PathMapping maps a host path prefix to the path where it is mounted into
+// the Relyper Backup container.
+type PathMapping struct {
+	Host  string
+	Local string
+}
+
+// Options tune a discovery run.
+type Options struct {
+	PathMap []PathMapping
+	// SelfID is the container ID of Relyper Backup itself (excluded).
+	SelfID string
+	// Exists reports whether a local path exists; os.Stat by default.
+	Exists func(string) bool
+}
+
+// PathMapFromEnv reads RELYPER_HOST_PATH_MAP ("/host=/local,/a=/b"). Host
+// paths that are mounted at the same path need no entry.
+func PathMapFromEnv() ([]PathMapping, error) {
+	var out []PathMapping
+	for _, part := range strings.Split(os.Getenv("RELYPER_HOST_PATH_MAP"), ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		h, l, ok := strings.Cut(part, "=")
+		if !ok || !filepath.IsAbs(h) || !filepath.IsAbs(l) {
+			return nil, fmt.Errorf("RELYPER_HOST_PATH_MAP: %q must look like /host/path=/local/path", part)
+		}
+		out = append(out, PathMapping{Host: path.Clean(h), Local: path.Clean(l)})
+	}
+	// Longest prefix first.
+	sort.Slice(out, func(i, j int) bool { return len(out[i].Host) > len(out[j].Host) })
+	return out, nil
+}
+
+// SelfContainerID guesses the own container ID from the hostname, which
+// Docker sets to the short container ID unless a hostname is configured.
+func SelfContainerID() string {
+	if v := os.Getenv("RELYPER_SELF_CONTAINER"); v != "" {
+		return v
+	}
+	h, _ := os.Hostname()
+	return h
+}
+
+// LocalPath maps a host path to the path inside Relyper Backup, or "" when
+// it is not reachable.
+func (o Options) LocalPath(host string) string {
+	host = path.Clean(host)
+	exists := o.Exists
+	if exists == nil {
+		exists = func(p string) bool { _, err := os.Stat(p); return err == nil }
+	}
+	for _, m := range o.PathMap {
+		if host == m.Host || strings.HasPrefix(host, m.Host+"/") {
+			p := m.Local + strings.TrimPrefix(host, m.Host)
+			if exists(p) {
+				return p
+			}
+			return ""
+		}
+	}
+	if exists(host) {
+		return host
+	}
+	return ""
+}
+
+// Discover asks the daemon and builds the inventory. Errors talking to the
+// daemon are reported in Host.Error, not returned, so callers can show them.
+func Discover(ctx context.Context, c *docker.Client, opt Options) *Inventory {
+	inv := &Inventory{GeneratedAt: time.Now(), Docker: Host{Endpoint: c.Endpoint}}
+	v, err := c.Ping(ctx)
+	if err != nil {
+		inv.Docker.Error = err.Error()
+		return inv
+	}
+	inv.Docker.Available, inv.Docker.Version = true, v.Version
+	info, err := c.Info(ctx)
+	if err == nil {
+		inv.Docker.Name = info.Name
+		inv.Docker.Swarm = info.Swarm.LocalNodeState == "active"
+	}
+	containers, err := c.ListContainers(ctx)
+	if err != nil {
+		inv.Docker.Error = err.Error()
+		return inv
+	}
+	var services []docker.Service
+	if inv.Docker.Swarm && info != nil && info.Swarm.ControlAvailable {
+		services, _ = c.ListServices(ctx)
+	}
+	inv.Apps, inv.Docker.Easypanel = Build(containers, services, opt)
+	return inv
+}
+
+var easypanelPath = regexp.MustCompile(`^/etc/easypanel/projects/([^/]+)/([^/]+)(/|$)`)
+
+// Build groups containers and Swarm services into apps. It is pure and
+// tested without a daemon.
+func Build(containers []docker.ContainerSummary, services []docker.Service, opt Options) ([]App, bool) {
+	easypanel := false
+	for _, c := range containers {
+		if isEasypanelImage(c.Image) {
+			easypanel = true
+		}
+	}
+	apps := map[string]*App{}
+	get := func(id, name, kind string) *App {
+		if a, ok := apps[id]; ok {
+			return a
+		}
+		a := &App{ID: id, Name: name, Kind: kind}
+		apps[id] = a
+		return a
+	}
+	seenSwarm := map[string]bool{}
+	for _, c := range containers {
+		if c.Labels[docker.VerifyLabel] == "true" || isSelf(c.ID, opt.SelfID) || isEasypanelImage(c.Image) {
+			continue
+		}
+		svc := Service{
+			Name: c.Name(), Container: c.Name(), ContainerID: c.ID, Image: c.Image, State: c.State,
+			SwarmService: c.Labels["com.docker.swarm.service.name"],
+		}
+		svc.Database = detectDatabase(c.Image)
+		for _, m := range c.Mounts {
+			if m.Type != "volume" && m.Type != "bind" {
+				continue
+			}
+			d := Data{Type: m.Type, Name: m.Name, HostPath: m.Source, ContainerPath: m.Destination, ReadOnly: !m.RW}
+			if isSocket(m.Source) {
+				continue
+			}
+			d.BackupPath = opt.LocalPath(m.Source)
+			d.DatabaseFiles = svc.Database != nil && isDataDir(svc.Database.Engine, m.Destination)
+			svc.Data = append(svc.Data, d)
+		}
+		appID, appName, kind, svcName := classify(c, easypanel)
+		svc.Name = svcName
+		if svc.SwarmService != "" {
+			seenSwarm[svc.SwarmService] = true
+		}
+		a := get(appID, appName, kind)
+		a.Services = append(a.Services, svc)
+	}
+	// Swarm services without a task on this node.
+	for _, s := range services {
+		name := s.Spec.Name
+		if seenSwarm[name] || isEasypanelImage(s.Spec.TaskTemplate.ContainerSpec.Image) {
+			continue
+		}
+		appID, appName, kind, svcName := classifyService(s, easypanel)
+		a := get(appID, appName, kind)
+		a.Services = append(a.Services, Service{
+			Name: svcName, Image: s.Spec.TaskTemplate.ContainerSpec.Image, State: "remote", SwarmService: name,
+			Database: detectDatabase(s.Spec.TaskTemplate.ContainerSpec.Image),
+		})
+		a.Notes = appendOnce(a.Notes, "Some services run on another Swarm node. Their data is not reachable from this node.")
+	}
+	out := make([]App, 0, len(apps))
+	for _, a := range apps {
+		sort.Slice(a.Services, func(i, j int) bool { return a.Services[i].Name < a.Services[j].Name })
+		if a.Kind == KindEasypanel {
+			a.Notes = appendOnce(a.Notes, "Easypanel layout (Swarm service names project_service, data under /etc/easypanel/projects) is assumed from conventions and not yet verified on a real Easypanel host.")
+		}
+		out = append(out, *a)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, easypanel
+}
+
+func appendOnce(list []string, s string) []string {
+	for _, x := range list {
+		if x == s {
+			return list
+		}
+	}
+	return append(list, s)
+}
+
+func isSelf(id, self string) bool {
+	return self != "" && len(self) >= 12 && strings.HasPrefix(id, self)
+}
+
+func isSocket(p string) bool {
+	return strings.HasSuffix(p, ".sock")
+}
+
+func isEasypanelImage(image string) bool {
+	repo := imageRepo(image)
+	return repo == "easypanel/easypanel"
+}
+
+// classify returns app ID, app name, kind and the service name.
+func classify(c docker.ContainerSummary, easypanel bool) (string, string, string, string) {
+	l := c.Labels
+	for _, m := range c.Mounts {
+		if g := easypanelPath.FindStringSubmatch(m.Source); g != nil {
+			return KindEasypanel + ":" + g[1], g[1], KindEasypanel, g[2]
+		}
+	}
+	if p := l["com.docker.compose.project"]; p != "" {
+		s := l["com.docker.compose.service"]
+		if s == "" {
+			s = c.Name()
+		}
+		return KindCompose + ":" + p, p, KindCompose, s
+	}
+	if ns := l["com.docker.stack.namespace"]; ns != "" {
+		return KindStack + ":" + ns, ns, KindStack, strings.TrimPrefix(l["com.docker.swarm.service.name"], ns+"_")
+	}
+	if svc := l["com.docker.swarm.service.name"]; svc != "" && easypanel {
+		if p, s, ok := strings.Cut(svc, "_"); ok {
+			return KindEasypanel + ":" + p, p, KindEasypanel, s
+		}
+	}
+	if svc := l["com.docker.swarm.service.name"]; svc != "" {
+		return KindStandalone + ":" + svc, svc, KindStandalone, svc
+	}
+	return KindStandalone + ":" + c.Name(), c.Name(), KindStandalone, c.Name()
+}
+
+func classifyService(s docker.Service, easypanel bool) (string, string, string, string) {
+	name := s.Spec.Name
+	if ns := s.Spec.Labels["com.docker.stack.namespace"]; ns != "" {
+		return KindStack + ":" + ns, ns, KindStack, strings.TrimPrefix(name, ns+"_")
+	}
+	for _, m := range s.Spec.TaskTemplate.ContainerSpec.Mounts {
+		if g := easypanelPath.FindStringSubmatch(m.Source); g != nil {
+			return KindEasypanel + ":" + g[1], g[1], KindEasypanel, g[2]
+		}
+	}
+	if easypanel {
+		if p, sv, ok := strings.Cut(name, "_"); ok {
+			return KindEasypanel + ":" + p, p, KindEasypanel, sv
+		}
+	}
+	return KindStandalone + ":" + name, name, KindStandalone, name
+}
+
+// imageRepo returns the repository of an image reference without registry
+// host, tag and digest: "docker.io/library/postgres:16" -> "postgres".
+func imageRepo(image string) string {
+	ref := image
+	if i := strings.Index(ref, "@"); i >= 0 {
+		ref = ref[:i]
+	}
+	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
+		ref = ref[:i]
+	}
+	parts := strings.Split(ref, "/")
+	if len(parts) > 1 && (strings.ContainsAny(parts[0], ".:") || parts[0] == "localhost") {
+		parts = parts[1:]
+	}
+	if len(parts) == 2 && parts[0] == "library" {
+		parts = parts[1:]
+	}
+	return strings.Join(parts, "/")
+}
+
+var engineByRepo = map[string]string{
+	"postgres": EnginePostgres, "postgis/postgis": EnginePostgres, "timescale/timescaledb": EnginePostgres,
+	"timescale/timescaledb-ha": EnginePostgres, "pgvector/pgvector": EnginePostgres, "supabase/postgres": EnginePostgres,
+	"bitnami/postgresql": EnginePostgres,
+	"mysql":              EngineMySQL, "bitnami/mysql": EngineMySQL, "percona": EngineMySQL, "percona/percona-server": EngineMySQL,
+	"mariadb": EngineMariaDB, "bitnami/mariadb": EngineMariaDB, "linuxserver/mariadb": EngineMariaDB,
+	"mongo": EngineMongo, "bitnami/mongodb": EngineMongo, "mongodb/mongodb-community-server": EngineMongo,
+	"redis": EngineRedis, "bitnami/redis": EngineRedis, "redis/redis-stack-server": EngineRedis,
+	"valkey/valkey": EngineRedis, "eqalpha/keydb": EngineRedis,
+}
+
+// Credential variables read at dump time (names only).
+var credentialEnv = map[string][]string{
+	EnginePostgres: {"POSTGRES_USER", "POSTGRES_PASSWORD"},
+	EngineMySQL:    {"MYSQL_ROOT_PASSWORD", "MYSQL_USER", "MYSQL_PASSWORD"},
+	EngineMariaDB:  {"MARIADB_ROOT_PASSWORD", "MYSQL_ROOT_PASSWORD", "MARIADB_USER", "MARIADB_PASSWORD"},
+	EngineMongo:    {"MONGO_INITDB_ROOT_USERNAME", "MONGO_INITDB_ROOT_PASSWORD"},
+	EngineRedis:    {"REDIS_PASSWORD"},
+}
+
+// Live data directories of the engines (official and Bitnami images).
+var dataDirs = map[string][]string{
+	EnginePostgres: {"/var/lib/postgresql", "/bitnami/postgresql", "/home/postgres/pgdata"},
+	EngineMySQL:    {"/var/lib/mysql", "/bitnami/mysql"},
+	EngineMariaDB:  {"/var/lib/mysql", "/bitnami/mariadb", "/config/databases"},
+	EngineMongo:    {"/data/db", "/data/configdb", "/bitnami/mongodb"},
+	EngineRedis:    {"/data", "/bitnami/redis"},
+}
+
+func isDataDir(engine, dest string) bool {
+	for _, d := range dataDirs[engine] {
+		if dest == d || strings.HasPrefix(dest, d+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// EngineOf returns the database engine of an image, or "".
+func EngineOf(image string) string {
+	return engineByRepo[imageRepo(image)]
+}
+
+func detectDatabase(image string) *Database {
+	e := EngineOf(image)
+	if e == "" {
+		return nil
+	}
+	return &Database{Engine: e, DumpSupported: true, Credentials: credentialEnv[e]}
+}
+
+// Find returns the app with the given ID.
+func (inv *Inventory) Find(id string) *App {
+	for i := range inv.Apps {
+		if inv.Apps[i].ID == id {
+			return &inv.Apps[i]
+		}
+	}
+	return nil
+}
+
+// ValidAppID reports whether id is safe to use in file names and hook
+// commands.
+func ValidAppID(id string) bool {
+	return appIDRe.MatchString(id)
+}
+
+var appIDRe = regexp.MustCompile(`^[a-z_]+:[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
+
+// Slug turns an app ID into a directory name.
+func Slug(id string) string {
+	return strings.NewReplacer(":", "-", "/", "-").Replace(id)
+}
