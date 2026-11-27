@@ -134,7 +134,9 @@ func (s *Server) serverFor(scopes []string) *sdk.Server {
 	registerConfigTools(r)
 	registerRunTools(r)
 	registerRestrictedTools(r)
+	registerOverwriteTool(r)
 	registerInfraTools(r)
+	registerConceptTools(r)
 	s.servers[key] = srv
 	return srv
 }
@@ -154,7 +156,9 @@ func (s *Server) Tools() []ToolInfo {
 	registerConfigTools(r)
 	registerRunTools(r)
 	registerRestrictedTools(r)
+	registerOverwriteTool(r)
 	registerInfraTools(r)
+	registerConceptTools(r)
 	return r.infos
 }
 

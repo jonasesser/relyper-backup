@@ -65,16 +65,30 @@ func (s *Service) ProposeAppPlan(ctx context.Context, appID string) (*AppPlan, e
 				p.Warnings = append(p.Warnings, svc.Name+" is not running; the dump before each backup will fail until it runs")
 			}
 		}
+		if svc.UnsupportedDatabase != "" {
+			p.Warnings = append(p.Warnings, fmt.Sprintf("%s (%s) has no dump support; its files are backed up as files, which is not consistent while it runs", svc.Name, svc.UnsupportedDatabase))
+		}
 		for _, d := range svc.Data {
 			switch {
 			case d.DatabaseFiles:
 				continue
+			case !discovery.Backed(d.Class):
+				p.Skipped = append(p.Skipped, fmt.Sprintf("%s: %s (%s data, not needed)", svc.Name, d.ContainerPath, d.Class))
 			case d.BackupPath == "":
 				p.Skipped = append(p.Skipped, fmt.Sprintf("%s: %s is not mounted into Relyper Backup", svc.Name, d.HostPath))
 			case !seen[d.BackupPath]:
 				seen[d.BackupPath] = true
 				p.Paths = append(p.Paths, d.BackupPath)
 			}
+		}
+	}
+	for _, f := range app.Deployment {
+		switch {
+		case f.BackupPath == "":
+			p.Skipped = append(p.Skipped, "deployment definition "+f.HostPath+" is not mounted into Relyper Backup")
+		case !seen[f.BackupPath]:
+			seen[f.BackupPath] = true
+			p.Paths = append(p.Paths, f.BackupPath)
 		}
 	}
 	if len(p.Databases) > 0 {

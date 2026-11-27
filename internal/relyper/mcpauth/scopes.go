@@ -21,6 +21,7 @@ const (
 	ScopeBackupsRun     = "backups:run"     // start backups and checks, cancel operations
 	ScopeRestore        = "restore"         // restore snapshots (each call needs approval)
 	ScopeDataDelete     = "data:delete"     // forget, prune, retention, removal (each call needs approval)
+	ScopeInfraManage    = "infra:manage"    // stop or restart app containers (each call needs approval)
 )
 
 // ScopeInfo describes a scope for the UI and the OAuth consent page.
@@ -41,6 +42,7 @@ var AllScopes = []ScopeInfo{
 	{ScopeBackupsRun, "Start backups, repository checks and statistics; cancel operations", false},
 	{ScopeRestore, "Request restores (every restore needs your approval)", true},
 	{ScopeDataDelete, "Request deleting snapshots, pruning, retention changes and removing repositories or plans (every request needs your approval)", true},
+	{ScopeInfraManage, "Request stopping or restarting app containers (every request needs your approval)", true},
 }
 
 // DefaultScopes is used when an OAuth client does not ask for scopes.

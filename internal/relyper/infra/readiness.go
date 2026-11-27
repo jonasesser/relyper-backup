@@ -128,7 +128,7 @@ func (s *Service) Readiness(ctx context.Context) (*ReadinessReport, error) {
 			add("backup", "ok", "the app keeps no data outside its image")
 		case StateProtected, StateViaDump, StateRemote:
 			add("backup", "ok", fmt.Sprintf("all data is in a snapshot younger than %d hours", cov.MaxAgeHours))
-		case StateStale, StateNotInSnapshot, StateDisabled:
+		case StateStale, StateNotInSnapshot, StateDisabled, StateUnsupported:
 			add("backup", "warning", "some data is not in a recent snapshot ("+ac.State+")")
 		default:
 			add("backup", "failed", "some data is not protected ("+ac.State+")")

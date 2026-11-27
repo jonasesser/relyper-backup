@@ -96,3 +96,34 @@ func TestCoverageChange(t *testing.T) {
 		}
 	}
 }
+
+func TestProtection(t *testing.T) {
+	s := &Service{}
+	cases := []struct {
+		name  string
+		items []string
+		want  string
+	}{
+		{"all protected", []string{StateProtected, StateViaDump, StateNotNeeded}, ProtFull},
+		{"one missing", []string{StateProtected, StateUnprotected}, ProtPartial},
+		{"not reachable", []string{StateProtected, StateNotReachable}, ProtPartial},
+		{"nothing", []string{StateUnprotected, StateUnprotected, StateNotNeeded}, ProtNone},
+		{"failing", []string{StateFailing, StateProtected}, ProtFailed},
+		{"stale", []string{StateStale, StateProtected}, ProtOverdue},
+		{"unsupported db", []string{StateUnsupported, StateProtected}, ProtUnsupported},
+		{"remote", []string{StateRemote, StateProtected}, ProtPartial},
+	}
+	for _, c := range cases {
+		ac := AppCoverage{App: "compose:x", State: StateProtected}
+		for _, st := range c.items {
+			ac.Items = append(ac.Items, CoverageItem{State: st})
+		}
+		s.protection(&ac, time.Now())
+		if ac.Protection != c.want {
+			t.Errorf("%s: %s, want %s", c.name, ac.Protection, c.want)
+		}
+		if c.want != ProtFull && len(ac.Actions) == 0 {
+			t.Errorf("%s: no recommended action", c.name)
+		}
+	}
+}

@@ -6,7 +6,7 @@ const tokenKey = "backrest-ui-authToken";
 
 export type DataItem = {
   service: string;
-  kind: "data" | "database" | "database_files" | "service";
+  kind: "data" | "database" | "database_files" | "service" | "deployment";
   name: string;
   path?: string;
   state: string;
@@ -14,6 +14,7 @@ export type DataItem = {
   last_snapshot?: string;
   snapshot_id?: string;
   detail?: string;
+  class?: string;
 };
 
 export type AppCoverage = {
@@ -21,6 +22,9 @@ export type AppCoverage = {
   name: string;
   kind: string;
   state: string;
+  protection: string;
+  actions?: string[];
+  databases?: string[];
   items: DataItem[];
   plans?: string[];
   notes?: string[];
@@ -34,6 +38,27 @@ export type DockerHost = {
   swarm: boolean;
   easypanel: boolean;
   error?: string;
+};
+
+export type ServiceInfo = {
+  name: string;
+  container?: string;
+  image: string;
+  state: string;
+  swarm_service?: string;
+  networks?: string[];
+  ports?: string[];
+  restart_policy?: string;
+  memory_limit_bytes?: number;
+  cpu_limit?: number;
+  depends_on?: string[];
+  domains?: string[];
+  database?: { engine: string };
+  unsupported_database?: string;
+};
+
+export type Inventory = {
+  apps: { id: string; services: ServiceInfo[] | null }[] | null;
 };
 
 export type CoverageReport = {
@@ -147,6 +172,7 @@ export const infraApi = {
   coverage: (refresh = false) =>
     call<CoverageReport>("coverage" + (refresh ? "?refresh=1" : "")),
   readiness: () => call<ReadinessReport>("readiness"),
+  inventory: () => call<Inventory>("inventory"),
   results: (app: string, plan: string) =>
     call<Results>(
       `results?app=${encodeURIComponent(app)}&plan=${encodeURIComponent(plan)}`,

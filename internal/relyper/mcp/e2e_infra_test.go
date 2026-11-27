@@ -65,7 +65,7 @@ func TestE2EInfra(t *testing.T) {
 	docker(t, "exec", "relyper-e2e-db", "psql", "-U", "postgres", "-d", "shop", "-c", "create table orders(id int); insert into orders values (1),(2);")
 
 	base, dirs := startServer(t)
-	token := createToken(t, base, []string{"status:read", "repos:manage", "plans:manage", "backups:run"})
+	token := createToken(t, base, []string{"status:read", "repos:manage", "plans:manage", "backups:run", "infra:manage"})
 	s := mcpConnect(t, base, token)
 
 	inv := mustCall(t, s, "discover_apps", map[string]any{"refresh": true})
@@ -121,6 +121,44 @@ func TestE2EInfra(t *testing.T) {
 	}
 	t.Logf("database test: %s", toJSON(db["results"]))
 	t.Logf("restore test: %s", toJSON(files["files"]))
+
+	// Tools under the concept's names.
+	ctrs := toJSON(mustCall(t, s, "list_docker_containers", nil))
+	if !strings.Contains(ctrs, `"restart_policy"`) && !strings.Contains(ctrs, `"networks"`) {
+		t.Fatalf("container details missing: %s", ctrs)
+	}
+	if !strings.Contains(toJSON(mustCall(t, s, "list_detected_databases", nil)), `"engine":"postgres"`) {
+		t.Fatal("postgres not listed")
+	}
+	mustCall(t, s, "list_docker_volumes", nil)
+	mustCall(t, s, "list_easypanel_projects", nil)
+	mustCall(t, s, "get_disaster_recovery_status", nil)
+	if !strings.Contains(toJSON(findApp(mustCall(t, s, "get_backup_coverage", nil), "compose:e2eshop")), `"protection":"fully_protected"`) {
+		t.Fatalf("protection after verification: %s", toJSON(findApp(mustCall(t, s, "get_backup_coverage", nil), "compose:e2eshop")))
+	}
+	dbop := mustCall(t, s, "run_database_backup", map[string]any{"app_id": "compose:e2eshop"})
+	if d := waitOp(t, s, dbop["operation_id"].(float64)); d["status"] != "success" {
+		t.Fatalf("database backup: %s", toJSON(d))
+	}
+
+	// Restarting a container needs an approval.
+	started := docker(t, "inspect", "-f", "{{.State.StartedAt}}", "relyper-e2e-web")
+	rq := map[string]any{"app_id": "compose:e2eshop", "service": "web"}
+	first := mustCall(t, s, "restart_container", rq)
+	if first["status"] != "approval_required" {
+		t.Fatalf("restart without approval: %v", first)
+	}
+	if docker(t, "inspect", "-f", "{{.State.StartedAt}}", "relyper-e2e-web") != started {
+		t.Fatal("restarted before approval")
+	}
+	if code, out := rpc(t, base, "/relyper.v1.RelyperMcp/DecideApproval", map[string]any{"id": first["approval_id"], "approve": true}, true, ""); code != 200 {
+		t.Fatalf("approve: %d %v", code, out)
+	}
+	rq["approval_id"] = first["approval_id"]
+	mustCall(t, s, "restart_container", rq)
+	if docker(t, "inspect", "-f", "{{.State.StartedAt}}", "relyper-e2e-web") == started {
+		t.Fatal("container not restarted")
+	}
 
 	ready := mustCall(t, s, "get_recovery_readiness", nil)
 	t.Logf("readiness: %s", ready["level"])

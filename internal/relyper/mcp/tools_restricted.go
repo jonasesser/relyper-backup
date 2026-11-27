@@ -15,6 +15,7 @@ import (
 	"connectrpc.com/connect"
 	v1 "github.com/garethgeorge/backrest/gen/go/v1"
 	"github.com/garethgeorge/backrest/internal/oplog"
+	"github.com/garethgeorge/backrest/internal/orchestrator/tasks"
 	"github.com/garethgeorge/backrest/internal/relyper/mcpauth"
 	"github.com/garethgeorge/backrest/internal/relyper/sshdiag"
 )
@@ -337,4 +338,81 @@ func (s *Server) exactSnapshot(ctx context.Context, repoID, id string) (*v1.Rest
 		return nil, errors.New("snapshot_id must be the full 64-character ID (see list_snapshots)")
 	}
 	return s.findSnapshot(ctx, repoID, id)
+}
+
+// protectedTarget reports whether dir is Relyper Backup's own state or a
+// system directory that a restore must never write into.
+func protectedTarget(dir string) bool {
+	roots := []string{"/bin", "/sbin", "/usr", "/lib", "/lib64", "/etc", "/proc", "/sys", "/dev", "/boot", "/root"}
+	for _, env := range []string{"BACKREST_CONFIG", "BACKREST_DATA", "XDG_CACHE_HOME"} {
+		if v := os.Getenv(env); v != "" {
+			if env == "BACKREST_CONFIG" {
+				v = filepath.Dir(v)
+			}
+			roots = append(roots, filepath.Clean(v))
+		}
+	}
+	if dir == "/" {
+		return true
+	}
+	for _, r := range roots {
+		if dir == r || strings.HasPrefix(dir, r+"/") || strings.HasPrefix(r, dir+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func registerOverwriteTool(r *registrar) {
+	s := r.s
+	addRestricted(r, restrictedSpec[RestoreIn]{
+		toolSpec: toolSpec{Name: "overwrite_existing_files", Title: "Restore over existing files", Scope: mcpauth.ScopeRestore, Destructive: true,
+			Description: "Restores a snapshot (or a path inside it) into an EXISTING directory and overwrites files with the same name; other files stay. Use it only to roll back production data after checking a restore into a new directory with restore_snapshot. Needs an approval for every call; the target must be writable for Relyper Backup (sources are normally mounted read-only) and must not be Relyper Backup's own state or a system directory. Stop the app first."},
+		Preview: func(ctx context.Context, in RestoreIn) (string, any, error) {
+			if !filepath.IsAbs(in.Target) || filepath.Clean(in.Target) != in.Target {
+				return "", nil, errors.New("target must be a clean absolute path")
+			}
+			if protectedTarget(in.Target) {
+				return "", nil, fmt.Errorf("%s is Relyper Backup's own state or a system directory", in.Target)
+			}
+			st, err := os.Stat(in.Target)
+			if err != nil || !st.IsDir() {
+				return "", nil, fmt.Errorf("target %q is not an existing directory; use restore_snapshot for a new directory", in.Target)
+			}
+			entries, err := os.ReadDir(in.Target)
+			if err != nil {
+				return "", nil, fmt.Errorf("cannot read %s: %v", in.Target, err)
+			}
+			sn, err := s.exactSnapshot(ctx, in.RepoID, in.SnapshotID)
+			if err != nil {
+				return "", nil, err
+			}
+			path := in.Path
+			if path == "" {
+				path = "/"
+			}
+			v := snapshotView(sn)
+			return fmt.Sprintf("OVERWRITE files in %s with %s of snapshot %s (%s) from %s", in.Target, path, v.ShortID, v.Time, in.RepoID),
+				map[string]any{"snapshot": v, "path": path, "target": in.Target, "existing_entries_in_target": len(entries),
+					"overwrites": "files in the target that also exist in the snapshot; files only in the target stay", "advice": "Stop the app before approving. This cannot be undone except by restoring an older snapshot."}, nil
+		},
+		Execute: func(ctx context.Context, c caller, in RestoreIn) (int64, any, error) {
+			if protectedTarget(in.Target) {
+				return 0, nil, errors.New("protected target")
+			}
+			sn, err := s.exactSnapshot(ctx, in.RepoID, in.SnapshotID)
+			if err != nil {
+				return 0, nil, err
+			}
+			repo, err := s.d.Orchestrator.GetRepo(in.RepoID)
+			if err != nil {
+				return 0, nil, err
+			}
+			id, err := s.d.Orchestrator.ScheduleTask(tasks.NewOneoffRestoreTask(repo, snapshotView(sn).PlanID, 0, time.Now(), sn.Id, in.Path, in.Target), tasks.TaskPriorityInteractive+tasks.TaskPriorityDefault)
+			if err != nil {
+				return 0, nil, err
+			}
+			return id, nil, nil
+		},
+	})
 }

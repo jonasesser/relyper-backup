@@ -69,13 +69,14 @@ session (JWT) is never accepted on `/mcp`.
 
 | Scope | Tools |
 |---|---|
-| `status:read` | get_system_overview, get_backup_status, list_repositories, get_repository_status, list_backup_plans, get_backup_plan, list_snapshots, get_snapshot_details, list_backup_operations, get_backup_operation, get_backup_errors, get_storage_usage, validate_backup_configuration, create_backup_recommendations, get_approval_request, discover_apps, get_backup_coverage, get_recovery_readiness, get_recovery_report, get_verification_results, propose_app_backup_plan |
+| `status:read` | get_system_overview, get_backup_status, list_repositories, get_repository_status, list_backup_plans, get_backup_plan, list_snapshots, get_snapshot_details, list_backup_operations, get_backup_operation, get_backup_errors, get_storage_usage, validate_backup_configuration, create_backup_recommendations, get_approval_request, discover_apps, list_docker_containers, list_docker_services, list_docker_volumes, list_easypanel_projects, list_detected_databases, get_backup_coverage, get_recovery_readiness, get_disaster_recovery_status, get_recovery_report, get_verification_results, propose_app_backup_plan |
 | `contents:browse` | list_snapshot_files (names only, never file contents) |
 | `repos:manage` | create_repository, update_repository, test_repository_connection, create_sftp_key, scan_sftp_host_keys, test_sftp_connection, trust_sftp_host_key (approval) |
 | `plans:manage` | create_app_backup_plan, create_backup_plan, update_backup_plan, enable_backup_plan, disable_backup_plan, delete_backup_plan (approval) |
-| `backups:run` | run_backup, run_repository_check, run_repository_stats, cancel_backup_operation, dump_app_databases, verify_app_databases, run_restore_test |
-| `restore` | restore_snapshot (approval) |
+| `backups:run` | run_backup, run_repository_check, run_repository_stats, cancel_backup_operation, dump_app_databases, run_database_backup, verify_app_databases, run_restore_test |
+| `restore` | restore_snapshot (approval), overwrite_existing_files (approval) |
 | `data:delete` | delete_snapshot, prune_repository, modify_retention_policy, delete_repository (all approval) |
+| `infra:manage` | stop_container, restart_container (approval) |
 
 A client only sees the tools its scopes allow (`tools/list` is filtered), and
 every call checks the scope again.
@@ -122,8 +123,9 @@ variables (`env`).
 
 ## Restricted operations and approval
 
-Restore, deleting snapshots, pruning, retention changes, removing plans or
-repositories and trusting SFTP host keys are enforced on the server:
+Restore, restoring over existing files, deleting snapshots, pruning,
+retention changes, removing plans or repositories, stopping or restarting
+app containers and trusting SFTP host keys are enforced on the server:
 
 1. The first call changes nothing. It validates the call, returns a
    **preview** (what will happen, current vs. new values, the snapshot
@@ -141,13 +143,9 @@ Pending requests are kept in memory; a restart discards them (fail-safe).
 
 Not offered through MCP:
 
-- **Overwriting existing files on restore** (`overwrite_existing_files`):
-  restores always go into a new directory, like in the web UI.
-- Starting, stopping or restarting app containers, and restoring a database
-  dump into a running production database: Relyper Backup only reads from
-  production containers (dumps) and restores into throwaway test
-  containers. Restoring production is a manual step described in the
-  recovery report.
+- Restoring a database dump into a running production database: database
+  restores go into throwaway test containers; restoring production is a
+  manual step described in the recovery report and `DISASTER-RECOVERY.md`.
 - Shell commands, raw restic commands, hook commands, and restic flags or
   environment variables that can run programs (`--password-command`,
   `RESTIC_PASSWORD_COMMAND`, `sftp.command`, `--files-from`, …). Only listed

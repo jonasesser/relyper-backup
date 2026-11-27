@@ -31,6 +31,7 @@ import {
   CoverageReport,
   ReadinessReport,
   Results,
+  ServiceInfo,
   infraApi,
 } from "./infraApi";
 
@@ -41,6 +42,15 @@ export const stateColor: Record<string, string> = {
   ok: "green",
   remote: "gray",
   no_data: "gray",
+  not_needed: "gray",
+  unsupported: "orange",
+  fully_protected: "green",
+  partially_protected: "orange",
+  not_protected: "red",
+  backup_failed: "red",
+  backup_overdue: "orange",
+  restore_not_verified: "yellow",
+  unsupported_configuration: "orange",
   stale: "orange",
   not_in_snapshot: "orange",
   disabled: "orange",
@@ -61,7 +71,61 @@ const stateLabel: Record<string, string> = {
   at_risk: "at risk",
   not_ready: "not ready",
   no_data: "no data",
+  not_needed: "not needed",
 };
+
+// Overall statuses in the order used for filters and the summary.
+export const protections = [
+  "fully_protected",
+  "restore_not_verified",
+  "partially_protected",
+  "backup_overdue",
+  "unsupported_configuration",
+  "backup_failed",
+  "not_protected",
+  "no_data",
+];
+
+const humanMB = (b?: number) =>
+  b ? `${Math.round(b / (1 << 20)).toLocaleString()} MB` : "";
+
+const ServiceDetails = ({ services }: { services: ServiceInfo[] }) => (
+  <Stack gap={2} fontSize="xs" data-testid="service-details">
+    {services.map((s) => (
+      <Box key={s.name} borderTopWidth="1px" pt={2}>
+        <Text fontWeight="medium" fontSize="sm">
+          {s.name}{" "}
+          <Text as="span" color="fg.muted" fontWeight="normal">
+            {s.image} · {s.state}
+          </Text>
+        </Text>
+        <Flex columnGap={3} rowGap={0} wrap="wrap" color="fg.muted">
+          {s.database && <Text>database {s.database.engine}</Text>}
+          {s.unsupported_database && (
+            <Text>database {s.unsupported_database} (no dump support)</Text>
+          )}
+          {s.restart_policy && <Text>restart {s.restart_policy}</Text>}
+          {s.memory_limit_bytes ? (
+            <Text>memory {humanMB(s.memory_limit_bytes)}</Text>
+          ) : null}
+          {s.cpu_limit ? <Text>cpu {s.cpu_limit}</Text> : null}
+          {(s.networks || []).length > 0 && (
+            <Text>networks {s.networks!.join(", ")}</Text>
+          )}
+          {(s.ports || []).length > 0 && (
+            <Text>ports {s.ports!.join(", ")}</Text>
+          )}
+          {(s.depends_on || []).length > 0 && (
+            <Text>depends on {s.depends_on!.join(", ")}</Text>
+          )}
+          {(s.domains || []).length > 0 && (
+            <Text wordBreak="break-all">domains {s.domains!.join(", ")}</Text>
+          )}
+        </Flex>
+      </Box>
+    ))}
+  </Stack>
+);
 
 // Anonymous volumes carry a 64-hex name; bind mounts repeat their path.
 export const itemName = (it: DataItem) => {
@@ -272,8 +336,17 @@ const TestResults = ({ app }: { app: AppCoverage }) => {
   );
 };
 
-const AppCard = ({ app, reload }: { app: AppCoverage; reload: () => void }) => {
+const AppCard = ({
+  app,
+  services,
+  reload,
+}: {
+  app: AppCoverage;
+  services: ServiceInfo[];
+  reload: () => void;
+}) => {
   const [showCreate, setShowCreate] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const hasDB = app.items.some((i) => i.kind === "database");
   const hasAppPlan = app.items.some((i) => i.kind === "database" && i.plan);
@@ -299,7 +372,7 @@ const AppCard = ({ app, reload }: { app: AppCoverage; reload: () => void }) => {
     >
       <Stack gap={3} data-testid={`app-${app.app}`}>
         <Flex gap={2} align="center" wrap="wrap">
-          <StateBadge state={app.state} />
+          <StateBadge state={app.protection || app.state} />
           {(app.plans || []).map((p) => (
             <Badge key={p} variant="outline">
               plan {p}
@@ -318,7 +391,10 @@ const AppCard = ({ app, reload }: { app: AppCoverage; reload: () => void }) => {
             >
               <Box minW="0" flex="1 1 240px">
                 <Text fontWeight="medium" wordBreak="break-word">
-                  {it.service} · {it.kind.replace("_", " ")}{" "}
+                  {it.service ? `${it.service} · ` : ""}
+                  {it.kind === "deployment"
+                    ? "deployment definition"
+                    : it.kind.replace("_", " ")}{" "}
                   <Text as="span" color="fg.muted" fontWeight="normal">
                     {itemName(it)}
                   </Text>
@@ -353,8 +429,31 @@ const AppCard = ({ app, reload }: { app: AppCoverage; reload: () => void }) => {
             {n}
           </Text>
         ))}
+        {(app.actions || []).length > 0 && (
+          <Box fontSize="sm" data-testid="app-actions">
+            <Text fontWeight="medium">What to do</Text>
+            <Stack as="ol" gap={0.5} pl={5} listStyleType="decimal">
+              {app.actions!.map((a) => (
+                <li key={a}>{a}</li>
+              ))}
+            </Stack>
+          </Box>
+        )}
+        {showDetails && services.length > 0 && (
+          <ServiceDetails services={services} />
+        )}
         {(hasAppPlan || plan) && <TestResults app={app} />}
         <Flex gap={2} wrap="wrap">
+          {services.length > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowDetails(!showDetails)}
+              data-testid="details-toggle"
+            >
+              {showDetails ? "Hide services" : "Services"}
+            </Button>
+          )}
           {!hasAppPlan && app.items.length > 0 && (
             <Button
               size="sm"
@@ -551,6 +650,13 @@ const ReportSection = () => {
 
 export const InfraPage = () => {
   const [cov, setCov] = useState<CoverageReport | null>(null);
+  const [services, setServices] = useState<Record<string, ServiceInfo[]>>({});
+  const [filter, setFilter] = useState({
+    text: "",
+    kind: "",
+    protection: "",
+    db: "",
+  });
   const [rd, setRd] = useState<ReadinessReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState("apps");
@@ -561,6 +667,14 @@ export const InfraPage = () => {
     try {
       setCov(await infraApi.coverage(refresh));
       setError(null);
+      infraApi
+        .inventory()
+        .then((inv) => {
+          const m: Record<string, ServiceInfo[]> = {};
+          for (const a of inv.apps || []) m[a.id] = a.services || [];
+          setServices(m);
+        })
+        .catch(() => setServices({}));
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -583,7 +697,42 @@ export const InfraPage = () => {
   const docker = cov?.docker;
   const apps = cov?.apps || [];
   const counts = (s: string[]) =>
-    apps.filter((a) => s.includes(a.state)).length;
+    apps.filter((a) => s.includes(a.protection)).length;
+  const engines = Array.from(
+    new Set(apps.flatMap((a) => a.databases || [])),
+  ).sort();
+  const shown = apps.filter(
+    (a) =>
+      (!filter.kind || a.kind === filter.kind) &&
+      (!filter.protection || a.protection === filter.protection) &&
+      (!filter.db || (a.databases || []).includes(filter.db)) &&
+      (!filter.text ||
+        (a.app + " " + a.name)
+          .toLowerCase()
+          .includes(filter.text.toLowerCase())),
+  );
+  const select = (
+    key: "kind" | "protection" | "db",
+    label: string,
+    options: [string, string][],
+  ) => (
+    <NativeSelect.Root size="sm" width={{ base: "100%", md: "auto" }}>
+      <NativeSelect.Field
+        aria-label={label}
+        data-testid={`filter-${key}`}
+        value={filter[key]}
+        onChange={(e) => setFilter({ ...filter, [key]: e.target.value })}
+      >
+        <option value="">{label}: all</option>
+        {options.map(([v, l]) => (
+          <option key={v} value={v}>
+            {l}
+          </option>
+        ))}
+      </NativeSelect.Field>
+      <NativeSelect.Indicator />
+    </NativeSelect.Root>
+  );
 
   return (
     <Box maxW="1000px" data-testid="infra-page">
@@ -633,13 +782,20 @@ export const InfraPage = () => {
           <Badge>Docker {docker.version}</Badge>
           {docker.swarm && <Badge>Swarm</Badge>}
           {docker.easypanel && <Badge>Easypanel</Badge>}
-          <Badge colorPalette="green">{counts(["protected"])} protected</Badge>
+          <Badge colorPalette="green">
+            {counts(["fully_protected"])} fully protected
+          </Badge>
           <Badge colorPalette="orange">
-            {counts(["stale", "not_in_snapshot", "disabled", "remote"])} need
-            attention
+            {counts([
+              "restore_not_verified",
+              "partially_protected",
+              "backup_overdue",
+              "unsupported_configuration",
+            ])}{" "}
+            need attention
           </Badge>
           <Badge colorPalette="red">
-            {counts(["failing", "unprotected", "not_reachable"])} unprotected
+            {counts(["not_protected", "backup_failed"])} unprotected or failed
           </Badge>
         </Flex>
       )}
@@ -651,13 +807,58 @@ export const InfraPage = () => {
         </TabsList>
         <TabsContent value="apps">
           <Stack gap={4}>
+            {apps.length > 0 && (
+              <Flex gap={2} wrap="wrap" data-testid="infra-filters">
+                <Input
+                  size="sm"
+                  width={{ base: "100%", md: "200px" }}
+                  placeholder="Search apps"
+                  aria-label="Search apps"
+                  value={filter.text}
+                  onChange={(e) =>
+                    setFilter({ ...filter, text: e.target.value })
+                  }
+                />
+                {select("protection", "Status", [
+                  ...protections.map(
+                    (p) =>
+                      [p, stateLabel[p] || p.replace(/_/g, " ")] as [
+                        string,
+                        string,
+                      ],
+                  ),
+                ])}
+                {select("kind", "Type", [
+                  ["compose", "Compose"],
+                  ["swarm_stack", "Swarm stack"],
+                  ["easypanel", "Easypanel"],
+                  ["container", "Container"],
+                ])}
+                {engines.length > 0 &&
+                  select(
+                    "db",
+                    "Database",
+                    engines.map((e) => [e, e] as [string, string]),
+                  )}
+              </Flex>
+            )}
+            {apps.length > 0 && shown.length === 0 && (
+              <Text fontSize="sm" color="fg.muted">
+                No app matches the filter.
+              </Text>
+            )}
             {docker?.available && apps.length === 0 && (
               <Text fontSize="sm" color="fg.muted">
                 No containers found.
               </Text>
             )}
-            {apps.map((a) => (
-              <AppCard key={a.app} app={a} reload={() => reload()} />
+            {shown.map((a) => (
+              <AppCard
+                key={a.app}
+                app={a}
+                services={services[a.app] || []}
+                reload={() => reload()}
+              />
             ))}
             {(cov?.plans_without_app || []).length > 0 && (
               <Text fontSize="xs" color="fg.muted">

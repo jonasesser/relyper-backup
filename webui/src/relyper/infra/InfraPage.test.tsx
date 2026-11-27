@@ -32,6 +32,9 @@ const shop = {
   name: "shop",
   kind: "compose",
   state: "unprotected",
+  protection: "not_protected",
+  actions: ["Create a backup plan for this app (it includes database dumps)."],
+  databases: ["postgres"],
   items: [
     {
       service: "db",
@@ -63,11 +66,14 @@ describe("InfraPage", () => {
     const card = await screen.findByTestId("app-compose:shop");
     expect(card).toHaveTextContent("/srv/shop/uploads");
     expect(screen.getByTestId("infra-summary")).toHaveTextContent(
-      "1 unprotected",
+      "1 unprotected or failed",
     );
     expect(screen.getByTestId("infra-summary")).toHaveTextContent("Easypanel");
     expect(screen.getAllByTestId("state-badge")[0]).toHaveTextContent(
-      /unprotected/i,
+      /not protected/i,
+    );
+    expect(screen.getByTestId("app-actions")).toHaveTextContent(
+      "Create a backup plan",
     );
   });
 
@@ -123,5 +129,31 @@ describe("InfraPage", () => {
         fetchMock.mock.calls.some(([u]) => String(u).includes("plan/create")),
       ).toBe(true),
     );
+  });
+
+  it("filters apps by status and database", async () => {
+    const blog = {
+      ...shop,
+      app: "easypanel:blog",
+      name: "blog",
+      kind: "easypanel",
+      protection: "fully_protected",
+      actions: [],
+      databases: ["mysql"],
+    };
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(json(coverage([shop, blog]))),
+    );
+    renderWithProviders(<InfraPage />);
+    await screen.findByTestId("app-compose:shop");
+    fireEvent.change(screen.getByTestId("filter-protection"), {
+      target: { value: "fully_protected" },
+    });
+    expect(screen.queryByTestId("app-compose:shop")).toBeNull();
+    expect(screen.getByTestId("app-easypanel:blog")).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId("filter-db"), {
+      target: { value: "postgres" },
+    });
+    expect(screen.getByText("No app matches the filter.")).toBeInTheDocument();
   });
 });

@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -203,6 +204,22 @@ type ContainerSummary struct {
 	Labels  map[string]string `json:"Labels"`
 	Mounts  []Mount           `json:"Mounts"`
 	Created int64             `json:"Created"`
+	Ports   []Port            `json:"Ports"`
+	// NetworkSettings.Networks is keyed by network name.
+	NetworkSettings struct {
+		Networks map[string]struct{} `json:"Networks"`
+	} `json:"NetworkSettings"`
+	HostConfig struct {
+		NetworkMode string `json:"NetworkMode"`
+	} `json:"HostConfig"`
+}
+
+// Port is a port of a container; PublicPort is 0 when it is not published.
+type Port struct {
+	IP          string `json:"IP"`
+	PrivatePort int    `json:"PrivatePort"`
+	PublicPort  int    `json:"PublicPort"`
+	Type        string `json:"Type"`
 }
 
 // Name is the container name without the leading slash.
@@ -238,7 +255,15 @@ type ContainerDetails struct {
 		Labels map[string]string `json:"Labels"`
 		User   string            `json:"User"`
 	} `json:"Config"`
-	Mounts []Mount `json:"Mounts"`
+	Mounts     []Mount `json:"Mounts"`
+	HostConfig struct {
+		RestartPolicy struct {
+			Name              string `json:"Name"`
+			MaximumRetryCount int    `json:"MaximumRetryCount"`
+		} `json:"RestartPolicy"`
+		Memory   int64 `json:"Memory"`
+		NanoCpus int64 `json:"NanoCpus"`
+	} `json:"HostConfig"`
 }
 
 // Env returns the value of an environment variable of the container.
@@ -295,6 +320,15 @@ type Service struct {
 					Target string `json:"Target"`
 				} `json:"Mounts"`
 			} `json:"ContainerSpec"`
+			RestartPolicy struct {
+				Condition string `json:"Condition"`
+			} `json:"RestartPolicy"`
+			Resources struct {
+				Limits struct {
+					NanoCPUs    int64 `json:"NanoCPUs"`
+					MemoryBytes int64 `json:"MemoryBytes"`
+				} `json:"Limits"`
+			} `json:"Resources"`
 		} `json:"TaskTemplate"`
 	} `json:"Spec"`
 }
@@ -459,4 +493,20 @@ func (c *Client) ListVerifyContainers(ctx context.Context) ([]ContainerSummary, 
 	var out []ContainerSummary
 	err := c.do(ctx, http.MethodGet, "/containers/json", url.Values{"all": {"1"}, "filters": {string(f)}}, nil, &out)
 	return out, err
+}
+
+// StopContainer stops a container, waiting up to timeout seconds before
+// the daemon kills it.
+func (c *Client) StopContainer(ctx context.Context, id string, timeout int) error {
+	err := c.do(ctx, http.MethodPost, "/containers/"+url.PathEscape(id)+"/stop", url.Values{"t": {strconv.Itoa(timeout)}}, nil, nil)
+	var e *APIError
+	if errors.As(err, &e) && e.Status == http.StatusNotModified {
+		return nil // already stopped
+	}
+	return err
+}
+
+// RestartContainer restarts a container.
+func (c *Client) RestartContainer(ctx context.Context, id string, timeout int) error {
+	return c.do(ctx, http.MethodPost, "/containers/"+url.PathEscape(id)+"/restart", url.Values{"t": {strconv.Itoa(timeout)}}, nil, nil)
 }

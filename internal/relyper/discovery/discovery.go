@@ -59,6 +59,8 @@ type App struct {
 	Name     string    `json:"name"`
 	Kind     string    `json:"kind"`
 	Services []Service `json:"services"`
+	// Deployment lists the files the app was deployed from (compose files).
+	Deployment []DeploymentFile `json:"deployment,omitempty"`
 	// Notes are facts worth knowing (assumptions, data on other nodes).
 	Notes []string `json:"notes,omitempty"`
 }
@@ -73,6 +75,17 @@ type Service struct {
 	SwarmService string    `json:"swarm_service,omitempty"`
 	Data         []Data    `json:"data,omitempty"`
 	Database     *Database `json:"database,omitempty"`
+	// UnsupportedDatabase names a database engine without dump support; its
+	// files are backed up as files, which is not consistent while it runs.
+	UnsupportedDatabase string            `json:"unsupported_database,omitempty"`
+	Networks            []string          `json:"networks,omitempty"`
+	Ports               []string          `json:"ports,omitempty"` // published, host->container/proto
+	RestartPolicy       string            `json:"restart_policy,omitempty"`
+	MemoryLimit         int64             `json:"memory_limit_bytes,omitempty"`
+	CPULimit            float64           `json:"cpu_limit,omitempty"`
+	DependsOn           []string          `json:"depends_on,omitempty"`
+	Domains             []string          `json:"domains,omitempty"`
+	Labels              map[string]string `json:"labels,omitempty"` // without labels that may hold secrets
 }
 
 // Data is a volume or bind mount of a service.
@@ -88,6 +101,8 @@ type Data struct {
 	// DatabaseFiles marks the live files of a database. They are not backed
 	// up as files (inconsistent while running); the database is dumped.
 	DatabaseFiles bool `json:"database_files,omitempty"`
+	// Class is persistent, configuration, database, cache or temporary.
+	Class string `json:"class"`
 }
 
 // Database is a detected database server.
@@ -114,6 +129,9 @@ type Options struct {
 	SelfID string
 	// Exists reports whether a local path exists; os.Stat by default.
 	Exists func(string) bool
+	// Details holds inspect results by container ID (restart policy,
+	// resources); optional.
+	Details map[string]*docker.ContainerDetails
 }
 
 // PathMapFromEnv reads RELYPER_HOST_PATH_MAP ("/host=/local,/a=/b"). Host
@@ -192,6 +210,14 @@ func Discover(ctx context.Context, c *docker.Client, opt Options) *Inventory {
 		inv.Docker.Error = err.Error()
 		return inv
 	}
+	if opt.Details == nil {
+		opt.Details = map[string]*docker.ContainerDetails{}
+		for _, ct := range containers {
+			if d, err := c.InspectContainer(ctx, ct.ID); err == nil {
+				opt.Details[ct.ID] = d
+			}
+		}
+	}
 	var services []docker.Service
 	if inv.Docker.Swarm && info != nil && info.Swarm.ControlAvailable {
 		services, _ = c.ListServices(ctx)
@@ -221,6 +247,10 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 		return a
 	}
 	seenSwarm := map[string]bool{}
+	specs := map[string]docker.Service{}
+	for _, sv := range services {
+		specs[sv.Spec.Name] = sv
+	}
 	for _, c := range containers {
 		if c.Labels[docker.VerifyLabel] == "true" || isSelf(c.ID, c.Name(), opt.SelfID) || isEasypanelImage(c.Image) {
 			continue
@@ -230,7 +260,29 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 			SwarmService: c.Labels["com.docker.swarm.service.name"],
 		}
 		svc.Database = detectDatabase(c.Image)
+		if svc.Database == nil {
+			svc.UnsupportedDatabase = unsupportedEngine(c.Image)
+		}
+		fillDetails(&svc, c, opt.Details[c.ID])
+		if sp, ok := specs[svc.SwarmService]; ok {
+			// Routing and policies of Swarm services live on the service,
+			// not on its task containers.
+			svc.Domains = mergeSorted(svc.Domains, domains(sp.Spec.Labels))
+			if svc.RestartPolicy == "" || svc.RestartPolicy == "no" {
+				svc.RestartPolicy = sp.Spec.TaskTemplate.RestartPolicy.Condition
+			}
+			if svc.MemoryLimit == 0 {
+				svc.MemoryLimit = sp.Spec.TaskTemplate.Resources.Limits.MemoryBytes
+			}
+			if svc.CPULimit == 0 {
+				svc.CPULimit = float64(sp.Spec.TaskTemplate.Resources.Limits.NanoCPUs) / 1e9
+			}
+		}
 		for _, m := range c.Mounts {
+			if m.Type == "tmpfs" {
+				svc.Data = append(svc.Data, Data{Type: m.Type, ContainerPath: m.Destination, Class: ClassTemporary})
+				continue
+			}
 			if m.Type != "volume" && m.Type != "bind" {
 				continue
 			}
@@ -245,6 +297,7 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 			}
 			d.BackupPath = opt.LocalPath(m.Source)
 			d.DatabaseFiles = svc.Database != nil && isDataDir(svc.Database.Engine, m.Destination)
+			d.Class = classifyData(m.Type, m.Destination, d.DatabaseFiles)
 			svc.Data = append(svc.Data, d)
 		}
 		appID, appName, kind, svcName := classify(c, easypanel)
@@ -254,6 +307,11 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 		}
 		a := get(appID, appName, kind)
 		a.Services = append(a.Services, svc)
+		for _, f := range deploymentFiles(c) {
+			if !hasDeployment(a.Deployment, f) {
+				a.Deployment = append(a.Deployment, DeploymentFile{HostPath: f, BackupPath: opt.LocalPath(f)})
+			}
+		}
 	}
 	// Swarm services without a task on this node.
 	for _, s := range services {
@@ -263,10 +321,18 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 		}
 		appID, appName, kind, svcName := classifyService(s, easypanel)
 		a := get(appID, appName, kind)
-		a.Services = append(a.Services, Service{
-			Name: svcName, Image: s.Spec.TaskTemplate.ContainerSpec.Image, State: "remote", SwarmService: name,
-			Database: detectDatabase(s.Spec.TaskTemplate.ContainerSpec.Image),
-		})
+		img := s.Spec.TaskTemplate.ContainerSpec.Image
+		rs := Service{
+			Name: svcName, Image: img, State: "remote", SwarmService: name,
+			Database: detectDatabase(img), Labels: safeLabels(s.Spec.Labels), Domains: domains(s.Spec.Labels),
+			RestartPolicy: s.Spec.TaskTemplate.RestartPolicy.Condition,
+			MemoryLimit:   s.Spec.TaskTemplate.Resources.Limits.MemoryBytes,
+			CPULimit:      float64(s.Spec.TaskTemplate.Resources.Limits.NanoCPUs) / 1e9,
+		}
+		if rs.Database == nil {
+			rs.UnsupportedDatabase = unsupportedEngine(img)
+		}
+		a.Services = append(a.Services, rs)
 		a.Notes = appendOnce(a.Notes, "Some services run on another Swarm node. Their data is not reachable from this node.")
 	}
 	out := make([]App, 0, len(apps))
@@ -279,6 +345,15 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, easypanel
+}
+
+func hasDeployment(list []DeploymentFile, f string) bool {
+	for _, d := range list {
+		if d.HostPath == f {
+			return true
+		}
+	}
+	return false
 }
 
 func appendOnce(list []string, s string) []string {

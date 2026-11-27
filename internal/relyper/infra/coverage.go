@@ -25,7 +25,22 @@ const (
 	StateNotReachable  = "not_reachable"   // the data is not mounted into Relyper Backup
 	StateRemote        = "remote"          // runs on another Swarm node
 	StateViaDump       = "covered_by_dump" // live database files; the dump is what counts
+	StateUnsupported   = "unsupported"     // a database without consistent dump support
 	StateNoData        = "no_data"         // app without volumes, bind mounts or databases
+	StateNotNeeded     = "not_needed"      // cache or temporary data, rebuilt by the app
+)
+
+// Protection is the overall status of an app in the terms of the product
+// concept. It combines coverage with restore verification.
+const (
+	ProtFull        = "fully_protected"           // everything needed is in a recent snapshot and restores were verified
+	ProtPartial     = "partially_protected"       // some required data is not backed up or not reachable
+	ProtNone        = "not_protected"             // nothing required is in a snapshot
+	ProtFailed      = "backup_failed"             // the latest backup attempt failed
+	ProtOverdue     = "backup_overdue"            // the latest snapshot is older than the maximum age
+	ProtUnverified  = "restore_not_verified"      // backed up, but no recent successful restore test
+	ProtUnsupported = "unsupported_configuration" // a component cannot be backed up consistently
+	ProtNoData      = "no_data"                   // nothing to back up
 )
 
 // CoverageItem is one volume, bind mount or database of an app.
@@ -39,17 +54,25 @@ type CoverageItem struct {
 	LastSnapshot string `json:"last_snapshot,omitempty"`
 	SnapshotID   string `json:"snapshot_id,omitempty"`
 	Detail       string `json:"detail,omitempty"`
+	Class        string `json:"class,omitempty"` // data class, see discovery
 }
 
 // AppCoverage is the coverage of one app.
 type AppCoverage struct {
-	App   string         `json:"app"`
-	Name  string         `json:"name"`
-	Kind  string         `json:"kind"`
-	State string         `json:"state"` // worst relevant item state
-	Items []CoverageItem `json:"items"`
-	Plans []string       `json:"plans,omitempty"`
-	Notes []string       `json:"notes,omitempty"`
+	App   string `json:"app"`
+	Name  string `json:"name"`
+	Kind  string `json:"kind"`
+	State string `json:"state"` // worst relevant item state
+	// Protection is the overall status (fully_protected, partially_protected,
+	// not_protected, backup_failed, backup_overdue, restore_not_verified,
+	// unsupported_configuration, no_data).
+	Protection string `json:"protection"`
+	// Actions are the recommended next steps, most important first.
+	Actions   []string       `json:"actions,omitempty"`
+	Databases []string       `json:"databases,omitempty"` // engines, for filtering
+	Items     []CoverageItem `json:"items"`
+	Plans     []string       `json:"plans,omitempty"`
+	Notes     []string       `json:"notes,omitempty"`
 }
 
 // CoverageReport covers all apps.
@@ -63,7 +86,7 @@ type CoverageReport struct {
 }
 
 var stateRank = map[string]int{
-	StateNoData: 0, StateProtected: 0, StateViaDump: 0, StateRemote: 1, StateStale: 2, StateNotInSnapshot: 3, StateDisabled: 4, StateFailing: 5, StateNotReachable: 6, StateUnprotected: 7,
+	StateNoData: 0, StateNotNeeded: 0, StateProtected: 0, StateViaDump: 0, StateRemote: 1, StateUnsupported: 2, StateStale: 2, StateNotInSnapshot: 3, StateDisabled: 4, StateFailing: 5, StateNotReachable: 6, StateUnprotected: 7,
 }
 
 var hookRe = regexp.MustCompile(`dump --dir '([^']+)' '([^']+)'`)
@@ -235,7 +258,13 @@ func (s *Service) Coverage(ctx context.Context) (*CoverageReport, error) {
 				ac.Items = append(ac.Items, CoverageItem{Service: svc.Name, Kind: "service", Name: svc.SwarmService, State: StateRemote, Detail: "runs on another Swarm node"})
 				continue
 			}
+			if svc.UnsupportedDatabase != "" {
+				ac.Databases = appendUnique(ac.Databases, svc.UnsupportedDatabase)
+				ac.Items = append(ac.Items, CoverageItem{Service: svc.Name, Kind: "database", Name: svc.UnsupportedDatabase, State: StateUnsupported,
+					Detail: "no consistent dump support for " + svc.UnsupportedDatabase + "; its files are only backed up as files"})
+			}
 			if svc.Database != nil {
+				ac.Databases = appendUnique(ac.Databases, svc.Database.Engine)
 				item := CoverageItem{Service: svc.Name, Kind: "database", Name: svc.Database.Engine}
 				if len(dumpPlans) == 0 {
 					item.State = StateUnprotected
@@ -255,8 +284,14 @@ func (s *Service) Coverage(ctx context.Context) (*CoverageReport, error) {
 				if name == "" {
 					name = d.HostPath
 				}
-				item := CoverageItem{Service: svc.Name, Kind: "data", Name: name, Path: d.BackupPath}
+				item := CoverageItem{Service: svc.Name, Kind: "data", Name: name, Path: d.BackupPath, Class: d.Class}
 				switch {
+				case d.Class == discovery.ClassCache || d.Class == discovery.ClassTemporary:
+					item.State = StateNotNeeded
+					item.Detail = d.Class + " data is rebuilt by the app and not backed up"
+					if d.Type == "tmpfs" {
+						item.Name = "tmpfs " + d.ContainerPath
+					}
 				case d.DatabaseFiles:
 					item.Kind, item.State = "database_files", StateViaDump
 					item.Detail = "live database files are not backed up as files; the dump protects them"
@@ -278,6 +313,22 @@ func (s *Service) Coverage(ctx context.Context) (*CoverageReport, error) {
 				ac.Items = append(ac.Items, item)
 			}
 		}
+		for _, f := range app.Deployment {
+			item := CoverageItem{Kind: "deployment", Name: f.HostPath, Path: f.BackupPath, Class: "deployment"}
+			if f.BackupPath == "" {
+				item.State = StateNotReachable
+				item.Detail = "mount " + f.HostPath + " into Relyper Backup (read-only) to back up the deployment definition"
+			} else {
+				var covering []*v1.Plan
+				for _, p := range cfg.Plans {
+					if planCovers(p, f.BackupPath) {
+						covering = append(covering, p)
+					}
+				}
+				item = mergeItem(item, s.evaluate(cfg, runs, covering, f.BackupPath, now))
+			}
+			ac.Items = append(ac.Items, item)
+		}
 		ac.State = StateProtected
 		planSet := map[string]bool{}
 		for _, it := range ac.Items {
@@ -291,10 +342,11 @@ func (s *Service) Coverage(ctx context.Context) (*CoverageReport, error) {
 				usedPlans[it.Plan] = true
 			}
 		}
-		if len(ac.Items) == 0 {
+		if len(ac.Items) == 0 || allNotNeeded(ac.Items) {
 			ac.State = StateNoData
 			ac.Notes = append(ac.Notes, "no volumes, bind mounts or databases: nothing to back up")
 		}
+		s.protection(&ac, now)
 		rep.Apps = append(rep.Apps, ac)
 	}
 	for _, p := range cfg.Plans {
@@ -303,6 +355,118 @@ func (s *Service) Coverage(ctx context.Context) (*CoverageReport, error) {
 		}
 	}
 	return rep, nil
+}
+
+func allNotNeeded(items []CoverageItem) bool {
+	for _, it := range items {
+		if it.State != StateNotNeeded {
+			return false
+		}
+	}
+	return true
+}
+
+func appendUnique(list []string, s string) []string {
+	for _, x := range list {
+		if x == s {
+			return list
+		}
+	}
+	return append(list, s)
+}
+
+// protection derives the overall status and the recommended actions.
+func (s *Service) protection(ac *AppCoverage, now time.Time) {
+	count := map[string]int{}
+	required := 0
+	for _, it := range ac.Items {
+		count[it.State]++
+		if it.State != StateNotNeeded && it.State != StateRemote {
+			required++
+		}
+	}
+	missing := count[StateUnprotected] + count[StateNotReachable] + count[StateNotInSnapshot] + count[StateDisabled]
+	act := func(a string) { ac.Actions = appendUnique(ac.Actions, a) }
+	if count[StateUnprotected] > 0 {
+		if len(ac.Plans) == 0 {
+			act("Create a backup plan for this app (it includes database dumps).")
+		} else {
+			act("Add the unprotected items to a plan, or create the app backup plan.")
+		}
+	}
+	if count[StateNotReachable] > 0 {
+		act("Mount the unreachable paths read-only into Relyper Backup (see DEPLOYMENT.md), then refresh.")
+	}
+	if count[StateNotInSnapshot] > 0 {
+		act("Run a backup so that a completed snapshot contains all items.")
+	}
+	if count[StateDisabled] > 0 {
+		act("Enable the plan's schedule.")
+	}
+	if count[StateFailing] > 0 {
+		act("Fix the failing backup (see the item details and the plan's operation log).")
+	}
+	if count[StateStale] > 0 {
+		act("Check the plan's schedule; the latest snapshot is older than the maximum age.")
+	}
+	if count[StateUnsupported] > 0 {
+		act("Stop the unsupported database during the backup or dump it from your own hook; its files alone are not a consistent backup.")
+	}
+	if count[StateRemote] > 0 {
+		act("Run Relyper Backup on the other Swarm nodes too, or pin the services with data to this node.")
+	}
+	unverified := s.unverified(ac)
+	switch {
+	case ac.State == StateNoData:
+		ac.Protection = ProtNoData
+		return
+	case count[StateFailing] > 0:
+		ac.Protection = ProtFailed
+	case missing > 0 && missing >= required-count[StateUnsupported]:
+		ac.Protection = ProtNone
+	case missing > 0 || count[StateRemote] > 0:
+		ac.Protection = ProtPartial
+	case count[StateStale] > 0:
+		ac.Protection = ProtOverdue
+	case count[StateUnsupported] > 0:
+		ac.Protection = ProtUnsupported
+	case unverified != "":
+		ac.Protection = ProtUnverified
+	default:
+		ac.Protection = ProtFull
+	}
+	if unverified != "" && missing == 0 && count[StateFailing] == 0 {
+		act(unverified)
+	}
+}
+
+// unverified returns the missing restore verification, or "".
+func (s *Service) unverified(ac *AppCoverage) string {
+	if s.store == nil {
+		return ""
+	}
+	if len(ac.Databases) > 0 && hasSupportedDB(ac) {
+		v := s.store.verifications(ac.App)
+		if len(v) == 0 || !v[0].OK || olderThan(v[0].Time, time.Now(), verifyMaxAge) {
+			return "Run a database restore test (it restores the dumps into a throwaway container)."
+		}
+	}
+	for _, p := range ac.Plans {
+		t := s.store.restoreTests(p)
+		if len(t) == 0 || !t[0].OK || olderThan(t[0].Time, time.Now(), verifyMaxAge) {
+			return "Run a file restore test for plan " + p + "."
+		}
+	}
+	return ""
+}
+
+func hasSupportedDB(ac *AppCoverage) bool {
+	for _, it := range ac.Items {
+		if it.Kind == "database" && it.State != StateUnsupported {
+			return true
+		}
+	}
+	return false
 }
 
 func mergeItem(base, eval CoverageItem) CoverageItem {
