@@ -187,6 +187,7 @@ type Mount struct {
 	Type        string `json:"Type"` // bind, volume, tmpfs
 	Name        string `json:"Name"`
 	Source      string `json:"Source"`
+	Driver      string `json:"Driver"`
 	Destination string `json:"Destination"`
 	RW          bool   `json:"RW"`
 }

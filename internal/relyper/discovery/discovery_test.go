@@ -22,7 +22,7 @@ func TestBuild(t *testing.T) {
 		ctr("aaaaaaaaaaaa1111", "relyper-backup", "relyper-backup:latest", "running", nil),
 		ctr("b1", "shop-db-1", "docker.io/library/postgres:16-alpine", "running",
 			map[string]string{"com.docker.compose.project": "shop", "com.docker.compose.service": "db"},
-			docker.Mount{Type: "volume", Name: "shop_pg", Source: "/var/lib/docker/volumes/shop_pg/_data", Destination: "/var/lib/postgresql/data", RW: true}),
+			docker.Mount{Type: "volume", Name: "shop_pg", Driver: "local", Destination: "/var/lib/postgresql/data", RW: true}),
 		ctr("b2", "shop-web-1", "ghcr.io/acme/shop:2", "running",
 			map[string]string{"com.docker.compose.project": "shop", "com.docker.compose.service": "web"},
 			docker.Mount{Type: "bind", Source: "/srv/shop/uploads", Destination: "/app/uploads", RW: true},
@@ -117,6 +117,9 @@ func TestPathMapAndIDs(t *testing.T) {
 	t.Setenv("RELYPER_HOST_PATH_MAP", "relative=/x")
 	if _, err := PathMapFromEnv(); err == nil {
 		t.Fatal("relative path accepted")
+	}
+	if (Options{Exists: func(string) bool { return true }}).LocalPath("") != "" {
+		t.Error("an empty mount source must not map to the working directory")
 	}
 	for id, ok := range map[string]bool{"compose:shop": true, "easypanel:my-blog_2": true, "compose:a;rm -rf /": false, "compose:": false, "x": false, "compose:'a'": false} {
 		if ValidAppID(id) != ok {

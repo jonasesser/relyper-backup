@@ -149,6 +149,9 @@ func SelfContainerID() string {
 // LocalPath maps a host path to the path inside Relyper Backup, or "" when
 // it is not reachable.
 func (o Options) LocalPath(host string) string {
+	if !path.IsAbs(host) {
+		return ""
+	}
 	host = path.Clean(host)
 	exists := o.Exists
 	if exists == nil {
@@ -230,6 +233,11 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 		for _, m := range c.Mounts {
 			if m.Type != "volume" && m.Type != "bind" {
 				continue
+			}
+			if m.Source == "" && m.Type == "volume" && m.Name != "" && (m.Driver == "" || m.Driver == "local") {
+				// The container list can omit the source of a volume; local
+				// volumes live under the daemon's volume directory.
+				m.Source = "/var/lib/docker/volumes/" + m.Name + "/_data"
 			}
 			d := Data{Type: m.Type, Name: m.Name, HostPath: m.Source, ContainerPath: m.Destination, ReadOnly: !m.RW}
 			if isSocket(m.Source) {

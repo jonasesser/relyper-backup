@@ -96,6 +96,7 @@ const spin = keyframes`
 `;
 
 const McpPage = React.lazy(() => import("../relyper/mcp/McpPage")); // relyper
+const InfraPage = React.lazy(() => import("../relyper/infra/InfraPage")); // relyper
 const SummaryDashboard = React.lazy(() =>
   import("../features/dashboard/SummaryDashboard").then((m) => ({
     default: m.SummaryDashboard,
@@ -644,6 +645,23 @@ const SidebarContent = ({ onClose }: { onClose?: () => void }) => {
           </Flex>
         </Box>
 
+        {/* relyper: infrastructure (apps, coverage, restore tests, DR report) */}
+        <Box
+          cursor="pointer"
+          onClick={() => handleNav("/infra")}
+          px={4}
+          py={2}
+          bg={isActive("/infra") ? "bg.muted" : undefined}
+          _hover={{ bg: "bg.muted" }}
+          userSelect="none"
+          data-testid="sidebar-infra"
+        >
+          <Flex align="center" gap={2}>
+            <FiServer />
+            <Text fontWeight="medium">Infrastructure</Text>
+          </Flex>
+        </Box>
+
         {/* relyper: MCP integration (tokens, approvals, audit log) */}
         <Box
           cursor="pointer"
@@ -1000,6 +1018,16 @@ export const App: React.FC = () => {
                       ]}
                     >
                       <GettingStartedGuide />
+                    </MainContentAreaTemplate>
+                  }
+                />
+                <Route
+                  path="/infra"
+                  element={
+                    <MainContentAreaTemplate
+                      breadcrumbs={[{ title: "Infrastructure" }]}
+                    >
+                      <InfraPage />
                     </MainContentAreaTemplate>
                   }
                 />
