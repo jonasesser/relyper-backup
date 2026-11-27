@@ -95,6 +95,14 @@ Details: `MCP.md`.
 | Easypanel template | open | Needs a real Easypanel server to verify paths |
 | Dashboard redesign | open | |
 
+## Phase 7 – Backup as a service for customers (in progress)
+
+Design: `docs/CONCEPT-MULTITENANT.md` (#25).
+
+| Item | Status | Notes |
+|---|---|---|
+| Design: tenants, isolation, notifications, own storage, recovery kit, escrow, threat model | done | #25 |
+
 ## Open decisions
 
 | Topic | State |
