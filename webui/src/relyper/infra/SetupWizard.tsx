@@ -187,8 +187,9 @@ export const SetupWizard = ({
             One small plan for Easypanel itself: its settings (environment
             variables, domains, ports, Traefik routes, certificates) and what
             each service needs to deploy again (.env, compose files, Dockerfile;
-            code only when it does not come from Git). No volumes, databases,
-            dependencies or build output. Add the app plans later.
+            code only when it was uploaded, not from Git, an image or a
+            template). No volumes, databases, dependencies or build output. Add
+            the app plans later.
           </Text>
         )}
         {scope === "apps" && (
@@ -279,6 +280,38 @@ export const SetupWizard = ({
                     {s}
                   </Text>
                 ))}
+                {a.plan?.sources && a.plan.sources.length > 0 && (
+                  <details data-testid={`setup-sources-${a.name}`}>
+                    <summary style={{ cursor: "pointer" }}>
+                      Where the code comes from (
+                      {a.plan.sources.filter((x) => x.code).length} of{" "}
+                      {a.plan.sources.length} services uploaded, code backed up)
+                    </summary>
+                    <Stack gap={0.5} mt={1}>
+                      {[...a.plan.sources]
+                        .sort(
+                          (x, y) =>
+                            Number(y.code) - Number(x.code) ||
+                            x.service.localeCompare(y.service),
+                        )
+                        .map((x) => (
+                          <Flex key={x.service} gap={2} wrap="wrap">
+                            <Badge
+                              colorPalette={x.code ? "green" : "gray"}
+                              flexShrink={0}
+                            >
+                              {x.source}
+                            </Badge>
+                            <Text fontWeight="medium">{x.service}</Text>
+                            <Text color="fg.muted" minW={0}>
+                              {x.code ? "code backed up: " : "no code: "}
+                              {x.reason}
+                            </Text>
+                          </Flex>
+                        ))}
+                    </Stack>
+                  </details>
+                )}
                 {a.items && a.items.length > 0 && (
                   <details>
                     <summary style={{ cursor: "pointer" }}>

@@ -32,6 +32,9 @@ type AppPlan struct {
 	// not chosen but lie inside a chosen directory.
 	Items    []PlanItem `json:"items"`
 	Excludes []string   `json:"excludes,omitempty"`
+	// Sources says per Easypanel service where its code comes from and
+	// whether the plan backs it up (plan of Easypanel itself only).
+	Sources []ServiceSource `json:"sources,omitempty"`
 	// ExcludePatterns are restic exclude patterns (names) that always apply.
 	ExcludePatterns []string `json:"exclude_patterns,omitempty"`
 }
@@ -123,12 +126,14 @@ func (s *Service) ProposeAppPlan(ctx context.Context, appID string) (*AppPlan, e
 				// From every service folder only what is needed to deploy
 				// it again; data in volumes/ is in the app plans.
 				for _, ps := range easypanelFolders(d.BackupPath) {
-					for _, it := range easypanelRestoreItems(filepath.Join(d.BackupPath, "projects", ps[0], ps[1]), ps[0], ps[1]) {
+					items, src := easypanelRestoreItems(filepath.Join(d.BackupPath, "projects", ps[0], ps[1]), ps[0], ps[1], easypanelImage(inv, ps[0], ps[1]))
+					for _, it := range items {
 						add(it)
 					}
+					p.Sources = append(p.Sources, src)
 				}
 				p.ExcludePatterns = easypanelBuildPatterns
-				p.Notes = append(p.Notes, "Code that Easypanel takes from Git is not backed up (it is fetched again on deploy); only the deployment files of such services are. Git data, dependencies and build output ("+strings.Join(easypanelBuildPatterns, ", ")+") are excluded everywhere in this plan.")
+				p.Notes = append(p.Notes, "Code is backed up only for services whose code was uploaded (no Git, no image or template); see the sources list. Git data, dependencies and build output ("+strings.Join(easypanelBuildPatterns, ", ")+") are excluded everywhere in this plan.")
 				continue
 			}
 			// The service folder: code/ holds the source Easypanel builds
@@ -457,42 +462,83 @@ var easypanelBuildPatterns = []string{".git", "node_modules", ".next", ".nuxt", 
 // deployFile matches the files needed to deploy a service again.
 var deployFile = regexp.MustCompile(`(?i)^(\.env.*|.*compose.*\.ya?ml|dockerfile.*|containerfile|.*\.dockerfile|nixpacks\.toml|procfile|caddyfile|.*\.conf)$`)
 
+// ServiceSource is where the code of an Easypanel service comes from.
+type ServiceSource struct {
+	Service string `json:"service"` // project/service
+	// Source: git, upload, image, unknown.
+	Source string `json:"source"`
+	Image  string `json:"image,omitempty"`
+	Code   bool   `json:"code"` // code/ is backed up
+	Reason string `json:"reason"`
+}
+
+// easypanelImage returns the image of a running Easypanel service.
+func easypanelImage(inv *discovery.Inventory, project, service string) string {
+	if a := inv.Find(discovery.KindEasypanel + ":" + project + "_" + service); a != nil {
+		for _, sv := range a.Services {
+			if sv.Image != "" {
+				return sv.Image
+			}
+		}
+	}
+	return ""
+}
+
+// easypanelSource tells where a service's code comes from. Easypanel builds
+// services from Git or uploaded code into images named easypanel/<project>/
+// <service>; services from a Docker image or an app template run that image.
+func easypanelSource(codeDir, image string) (string, string) {
+	if st, err := os.Stat(filepath.Join(codeDir, ".git")); err == nil && st.IsDir() {
+		return "git", "from Git; fetched again on deploy"
+	}
+	switch {
+	case image == "":
+		return "unknown", "service not running, source unknown; only deployment files"
+	case strings.HasPrefix(image, "easypanel/"):
+		return "upload", "uploaded or written in Easypanel (built by Easypanel, no Git)"
+	default:
+		return "image", "runs the image " + image + " (Docker image or app template); nothing to keep"
+	}
+}
+
 // easypanelRestoreItems returns what the Easypanel plan takes from a service
-// folder: for code from Git only the deployment files at the top of code/,
-// otherwise code/ (build output is excluded by easypanelBuildPatterns) and
-// the files at the top of the service folder; never volumes/ or other
-// folders, which hold mounted app data.
-func easypanelRestoreItems(dir, project, service string) []PlanItem {
+// folder: the deployment files at the top of code/ and the files at the top
+// of the service folder; the whole code/ only for code that was uploaded
+// (build output is excluded by easypanelBuildPatterns). Never volumes/ or
+// other folders, which hold mounted app data.
+func easypanelRestoreItems(dir, project, service, image string) ([]PlanItem, ServiceSource) {
 	name := project + "/" + service
 	svc := project + "_" + service
+	codeDir := filepath.Join(dir, "code")
+	source, reason := easypanelSource(codeDir, image)
+	src := ServiceSource{Service: name, Source: source, Image: image, Reason: reason}
 	var out []PlanItem
 	ents, err := os.ReadDir(dir)
 	if err != nil {
-		return nil
+		return nil, src
 	}
 	for _, e := range ents {
 		p := filepath.Join(dir, e.Name())
 		switch {
-		case e.Name() == "volumes":
-			continue // app data
 		case e.Name() == "code" && e.IsDir():
-			if st, err := os.Stat(filepath.Join(p, ".git")); err == nil && st.IsDir() {
-				files, _ := os.ReadDir(p)
-				for _, f := range files {
-					if f.Type().IsRegular() && deployFile.MatchString(f.Name()) {
-						out = append(out, PlanItem{Path: filepath.Join(p, f.Name()), Kind: "config", Service: svc, Label: name + ": " + f.Name() + " (code from Git is fetched again on deploy)", Selected: true})
-					}
-				}
+			if source == "upload" {
+				src.Code = true
+				out = append(out, PlanItem{Path: p, Kind: "config", Service: svc, Label: name + ": code/ (uploaded, no Git; without dependencies and build output)", Selected: true})
 				continue
 			}
-			out = append(out, PlanItem{Path: p, Kind: "config", Service: svc, Label: name + ": code/ (not from Git; without dependencies and build output)", Selected: true})
+			files, _ := os.ReadDir(p)
+			for _, f := range files {
+				if f.Type().IsRegular() && deployFile.MatchString(f.Name()) {
+					out = append(out, PlanItem{Path: filepath.Join(p, f.Name()), Kind: "config", Service: svc, Label: name + ": " + f.Name() + " (deployment file; code " + source + ")", Selected: true})
+				}
+			}
 		case e.Type().IsRegular():
 			out = append(out, PlanItem{Path: p, Kind: "config", Service: svc, Label: name + ": " + e.Name(), Selected: true})
 		}
-		// Other folders (data/, mounts) hold data the service mounts;
-		// it belongs to the plan of the app.
+		// volumes/ and other folders (data/, mounts) hold data the service
+		// mounts; it belongs to the plan of the app.
 	}
-	return out
+	return out, src
 }
 
 // easypanelEntryLabel says what an entry of /etc/easypanel holds.

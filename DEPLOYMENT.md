@@ -312,12 +312,17 @@ certificates) are shared by all services, so they are only in the plan of
 the app "Easypanel" (`system:easypanel`, plan `app-system-easypanel`). To
 start small, choose "Easypanel configuration only (no app data)" in "Set up
 backups": one plan with these settings and what each Easypanel service
-needs to deploy again: for code that Easypanel takes from Git (a `.git`
-folder in `code/`) only the deployment files at the top of `code/`
+needs to deploy again: the deployment files at the top of `code/`
 (`.env*`, compose files, `Dockerfile*`, `nixpacks.toml`, `Procfile`,
-`Caddyfile`, `*.conf`), for other code the whole `code/`, and the other
-files of the service folder. `volumes/`, app volumes and databases are not
-in it; `.git`, `node_modules`, `dist`, `build`, `.next`, caches and virtual
+`Caddyfile`, `*.conf`) and the files at the top of the service folder. The
+whole `code/` only for code that was uploaded or written in Easypanel: the
+service runs an image Easypanel built (`easypanel/<project>/<service>`) and
+`code/` is no Git checkout. Code from Git, Docker images and app templates is
+fetched again on deploy and left out; the preview lists the source of every
+service ("Where the code comes from"). A service that is not running has an
+unknown source and gets only its deployment files. Easypanel's own backups
+and action logs and the other folders of a service (`data/`, mounts) are not
+in it either, nor `volumes/`, app volumes and databases; `.git`, `node_modules`, `dist`, `build`, `.next`, caches and virtual
 environments are excluded everywhere in this plan. The preview shows the measured size of every path. Add the app
 plans later.
 

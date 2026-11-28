@@ -104,13 +104,14 @@ func TestProposeEasypanelSystemPlan(t *testing.T) {
 	root := t.TempDir()
 	ep := filepath.Join(root, "easypanel")
 	for _, d := range []string{"projects/hosting/budget/code/.git", "projects/hosting/budget/code/src", "projects/hosting/budget/volumes/data",
-		"projects/web/db/data", "projects/web/site/code/node_modules/x", "traefik", "data", "backups", "actions"} {
+		"projects/web/db/data", "projects/web/site/code/node_modules/x", "projects/web/ghost/code", "traefik", "data", "backups", "actions"} {
 		if err := os.MkdirAll(filepath.Join(ep, d), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for _, f := range []string{"projects/hosting/budget/code/.env", "projects/hosting/budget/code/docker-compose.yml", "projects/hosting/budget/code/Dockerfile",
-		"projects/hosting/budget/code/main.go", "projects/web/site/code/index.php", "projects/web/site/code/node_modules/x/big.js"} {
+		"projects/hosting/budget/code/main.go", "projects/web/site/code/index.php", "projects/web/site/code/node_modules/x/big.js",
+		"projects/web/ghost/code/docker-compose.yml", "projects/web/ghost/code/theme.js"} {
 		if err := os.WriteFile(filepath.Join(ep, f), []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -119,7 +120,9 @@ func TestProposeEasypanelSystemPlan(t *testing.T) {
 	s.inv = &discovery.Inventory{Docker: discovery.Host{Available: true, Easypanel: true,
 		EasypanelConfig: []discovery.DeploymentFile{{HostPath: "/etc/easypanel", BackupPath: ep}}},
 		Apps: []discovery.App{{ID: discovery.EasypanelSystemID, Name: "Easypanel", Kind: discovery.KindSystem,
-			Services: []discovery.Service{{Name: "easypanel", State: "running"}}}}}
+			Services: []discovery.Service{{Name: "easypanel", State: "running"}}},
+			{ID: "easypanel:web_site", Kind: discovery.KindEasypanel, Project: "web", Services: []discovery.Service{{Name: "site", Image: "easypanel/web/site:latest"}}},
+			{ID: "easypanel:web_ghost", Kind: discovery.KindEasypanel, Project: "web", Services: []discovery.Service{{Name: "ghost", Image: "ghost:5"}}}}}
 	s.invAt = time.Now()
 	p, err := s.ProposeAppPlan(context.Background(), discovery.EasypanelSystemID)
 	if err != nil {
@@ -130,9 +133,19 @@ func TestProposeEasypanelSystemPlan(t *testing.T) {
 	// dependencies. volumes/ never.
 	want := []string{filepath.Join(ep, "data"), filepath.Join(ep, "traefik"),
 		filepath.Join(code, ".env"), filepath.Join(code, "Dockerfile"), filepath.Join(code, "docker-compose.yml"),
-		filepath.Join(ep, "projects/web/site/code"), s.InventoryDir()}
+		filepath.Join(ep, "projects/web/ghost/code/docker-compose.yml"), filepath.Join(ep, "projects/web/site/code"), s.InventoryDir()}
 	if !slices.Equal(p.Paths, want) {
 		t.Fatalf("paths %v, want %v", p.Paths, want)
+	}
+	src := map[string]string{}
+	for _, x := range p.Sources {
+		src[x.Service] = x.Source
+		if x.Code != (x.Source == "upload") {
+			t.Errorf("code flag of %+v", x)
+		}
+	}
+	if src["hosting/budget"] != "git" || src["web/site"] != "upload" || src["web/ghost"] != "image" || src["web/db"] != "unknown" {
+		t.Fatalf("sources %v", src)
 	}
 	// Easypanel's own backups and action logs are offered but not chosen;
 	// data/ of a service is mounted app data and not offered.

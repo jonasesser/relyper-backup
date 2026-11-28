@@ -8,6 +8,9 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 
 ### Added
 
+- Easypanel-only plan: code only of services whose code was uploaded (not
+  from Git, an image or a template); the preview lists the source of every
+  service. (#69)
 - Pin snapshots: a pinned snapshot (restic tag `relyper-pinned`) is kept by
   every retention run and cannot be forgotten until it is unpinned; pin on
   the plan page, list on Infrastructure → Storage, MCP `pin_snapshot`. New

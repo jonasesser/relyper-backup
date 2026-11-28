@@ -186,6 +186,13 @@ export type AppPlan = {
   warnings?: string[];
   notes?: string[];
   items?: PlanItem[];
+  sources?: {
+    service: string;
+    source: "git" | "upload" | "image" | "unknown";
+    image?: string;
+    code: boolean;
+    reason: string;
+  }[];
   excludes?: string[];
 };
 

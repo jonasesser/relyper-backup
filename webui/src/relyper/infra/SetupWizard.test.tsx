@@ -131,6 +131,20 @@ describe("SetupWizard", () => {
                       app: "system:easypanel",
                       plan_id: "app-system-easypanel",
                       paths: ["/etc/easypanel/traefik"],
+                      sources: [
+                        {
+                          service: "web/site",
+                          source: "upload",
+                          code: true,
+                          reason: "uploaded",
+                        },
+                        {
+                          service: "web/ghost",
+                          source: "image",
+                          code: false,
+                          reason: "runs the image ghost:5",
+                        },
+                      ],
                     },
                     size: { bytes: 5 * 1024 ** 2, files: 40, complete: true },
                     items: [
@@ -156,12 +170,15 @@ describe("SetupWizard", () => {
       target: { value: "easypanel_config" },
     });
     expect(screen.getByTestId("setup-scope-help")).toHaveTextContent(
-      "code only when it does not come from Git",
+      "code only when it was uploaded",
     );
     fireEvent.click(screen.getByTestId("setup-preview"));
     expect(
       await screen.findByTestId("setup-items-Easypanel"),
     ).toHaveTextContent("Traefik routes");
+    expect(screen.getByTestId("setup-sources-Easypanel")).toHaveTextContent(
+      "1 of 2 services uploaded",
+    );
     const call = fetchMock.mock.calls.find((c) =>
       String(c[0]).endsWith("setup/propose"),
     )!;
