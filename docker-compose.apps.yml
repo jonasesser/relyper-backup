@@ -4,10 +4,14 @@
 #   docker compose -f docker-compose.apps.yml up -d --build
 #   open http://<host>:9898, create the admin user, then open "Infrastructure"
 #
-# Relyper Backup talks to Docker through a filtering socket proxy instead of
-# the raw socket. Read "Application-aware backup" in DEPLOYMENT.md first:
-# the proxy still allows starting containers and running commands in them,
-# which is what database dumps and restore tests need.
+# Relyper Backup never sees the Docker socket. It talks to the Relyper Docker
+# guard, a small separate container that allows reading the Docker host, the
+# fixed database dump scripts and isolated restore-test containers, and
+# refuses everything else (no arbitrary commands, no privileged containers,
+# no host mounts). Read "Application-aware backup" in DEPLOYMENT.md.
+#
+# Set a random token first, e.g. in a .env file next to this file:
+#   echo "RELYPER_GUARD_TOKEN=$(openssl rand -hex 32)" > .env
 
 services:
   relyper-backup:
@@ -20,12 +24,27 @@ services:
     restart: unless-stopped
     stop_grace_period: 2m
     depends_on:
-      - docker-proxy
+      - docker-guard
     ports:
       - "9898:9898"
+    # Hardening: read-only image, only the capabilities restic needs to read
+    # every file (DAC_READ_SEARCH) and to restore owners and permissions
+    # (CHOWN, DAC_OVERRIDE, FOWNER, FSETID). No privileged mode.
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, DAC_READ_SEARCH, FOWNER, FSETID]
+    security_opt:
+      - no-new-privileges:true
     environment:
       TZ: Europe/Berlin
-      RELYPER_DOCKER_HOST: tcp://docker-proxy:2375
+      # Hook commands: only the database dump command of app plans may run.
+      # Remove this line (or set "all") to allow your own shell hooks; then
+      # everyone who can edit a plan can run commands in this container.
+      RELYPER_HOOK_COMMANDS: dbdump
+      RELYPER_DOCKER_HOST: tcp://docker-guard:2375
+      RELYPER_DOCKER_TOKEN: ${RELYPER_GUARD_TOKEN:?set RELYPER_GUARD_TOKEN, see the top of this file}
       # Host paths that are mounted at a different path inside this
       # container, as host=container pairs separated by commas.
       RELYPER_HOST_PATH_MAP: /srv=/sources/srv
@@ -49,31 +68,31 @@ services:
       - default
       - docker-api
 
-  docker-proxy:
-    image: tecnativa/docker-socket-proxy:v0.4.1
+  docker-guard:
+    build:
+      context: .
+      dockerfile: Dockerfile.docker-guard
+    image: relyper-docker-guard:latest
     restart: unless-stopped
     environment:
-      # Read access for discovery.
-      INFO: 1
-      CONTAINERS: 1
-      VOLUMES: 1
-      SERVICES: 1 # Swarm / Easypanel
-      TASKS: 1
-      NODES: 1
-      # Write access: exec for database dumps, create/start/remove of
-      # throwaway restore-test containers. Images, networks, secrets,
-      # configs, plugins, system and build stay blocked.
-      EXEC: 1
-      POST: 1
-      # Remove this line on hosts with IPv6 enabled in Docker.
-      DISABLE_IPV6: 1
+      RELYPER_GUARD_TOKEN: ${RELYPER_GUARD_TOKEN:?set RELYPER_GUARD_TOKEN, see the top of this file}
+      # Each write feature is off unless enabled here. Without them the
+      # guard only allows reading (discovery, coverage).
+      RELYPER_GUARD_DUMPS: "1" # fixed dump scripts in database containers
+      RELYPER_GUARD_VERIFY: "1" # isolated restore-test containers
+      # RELYPER_GUARD_LIFECYCLE: "1" # stop/restart containers (MCP, after approval)
+      # RELYPER_GUARD_REQUIRE_LABEL: "1" # only containers labelled relyper.dump=true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     networks:
       - docker-api
 
 networks:
-  # Internal network: only Relyper Backup can reach the proxy.
+  # Internal network: only Relyper Backup can reach the guard.
   docker-api:
     internal: true
 

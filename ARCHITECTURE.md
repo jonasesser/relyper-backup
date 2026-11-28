@@ -143,6 +143,10 @@ contains its path.
 
 One multi-stage `Dockerfile`: web UI (Node 22, pnpm 9) → Go (static,
 `CGO_ENABLED=0`) + verified restic → Alpine runtime with tini, OpenSSH client,
-rclone, docker-cli. Details in `DEPLOYMENT.md`. Upstream's goreleaser setup
+rclone; it runs read-only with few capabilities. Docker access goes through
+a second image, `Dockerfile.docker-guard` (static `relyper-docker-guard` on
+`scratch`), the only container with the Docker socket; it allows the fixed
+calls of discovery, dumps and restore tests and nothing else
+(`internal/relyper/dockerguard`). Details in `DEPLOYMENT.md`. Upstream's goreleaser setup
 (`.goreleaser.yaml`, `Dockerfile.alpine`, `Dockerfile.scratch`) is kept
 unchanged for reference and merges; Relyper does not publish with it.

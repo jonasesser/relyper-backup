@@ -123,7 +123,7 @@ func dumpOne(ctx context.Context, c *docker.Client, s discovery.Service, dir str
 	}
 	d := &Dump{Service: s.Name, Engine: s.Database.Engine, Image: s.Image, Container: s.Container, File: fileName(s.Name, e.ext), Stats: parseStats(stats)}
 	if s.Database.Engine == discovery.EnginePostgres {
-		if u, err := runCapture(ctx, c, s.ContainerID, pgUser+`printf %s "$__u"`); err == nil {
+		if u, err := runCapture(ctx, c, s.ContainerID, pgUserPrint); err == nil {
 			d.User = strings.TrimSpace(u)
 		}
 	}
@@ -233,7 +233,7 @@ func Verify(ctx context.Context, c *docker.Client, d Dump, dumpPath string, log 
 			return r, nil
 		}
 	}
-	pw := randomHex(16)
+	pw := randomHex(VerifyPasswordLen / 2)
 	name := "relyper-verify-" + randomHex(6)
 	id, err := c.CreateVerifyContainer(ctx, name, docker.ContainerConfig{Image: d.Image, Env: e.verifyEnv(pw, d.User)})
 	if err != nil {
@@ -261,10 +261,10 @@ func Verify(ctx context.Context, c *docker.Client, d Dump, dumpPath string, log 
 		return nil, err
 	}
 	if e.restoreBeforeStart == "" {
-		if _, err := runCapture(ctx, c, id, "mkdir -p /tmp/relyper-restore && chmod 777 /tmp/relyper-restore"); err != nil {
+		if _, err := runCapture(ctx, c, id, prepareRestoreDir); err != nil {
 			return nil, err
 		}
-		if err := c.PutArchive(ctx, id, "/tmp/relyper-restore", tarOf(restoreName, dumpPath, size)); err != nil {
+		if err := c.PutArchive(ctx, id, restoreDir, tarOf(restoreName, dumpPath, size)); err != nil {
 			return nil, fmt.Errorf("copying the dump: %w", err)
 		}
 		if out, err := runCaptureEnv(ctx, c, id, e.restore, verifyExecEnv(d.Engine, pw)); err != nil {

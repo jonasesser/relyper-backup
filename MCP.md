@@ -76,7 +76,7 @@ session (JWT) is never accepted on `/mcp`.
 | `backups:run` | run_backup, run_repository_check, run_repository_stats, cancel_backup_operation, dump_app_databases, run_database_backup, verify_app_databases, run_restore_test |
 | `restore` | restore_snapshot (approval), overwrite_existing_files (approval) |
 | `data:delete` | delete_snapshot, prune_repository, modify_retention_policy, delete_repository (all approval) |
-| `infra:manage` | stop_container, restart_container (approval) |
+| `infra:manage` | stop_container, restart_container (approval; the Relyper Docker guard must run with `RELYPER_GUARD_LIFECYCLE=1`) |
 
 A client only sees the tools its scopes allow (`tools/list` is filtered), and
 every call checks the scope again.

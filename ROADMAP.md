@@ -58,7 +58,7 @@ Details: `MCP.md`.
 
 | Item | Status | Notes |
 |---|---|---|
-| Docker discovery via the Engine API | done | #20 – stdlib client, unix socket or a filtering socket proxy (`docker-compose.apps.yml`) |
+| Docker discovery via the Engine API | done | #20 – stdlib client; since #38 only through the Relyper Docker guard (`docker-compose.apps.yml`) |
 | Apps: Compose projects, Swarm stacks, single containers | done | #20 |
 | Easypanel projects | partial | #20 – detected from `/etc/easypanel/projects` paths and `<project>_<service>` names; not yet checked on a real Easypanel server |
 | Swarm services on other nodes | partial | Listed as `remote`; their data is not reachable from this node |
@@ -91,7 +91,8 @@ Details: `MCP.md`.
 |---|---|---|
 | Relyper Identity (OIDC) | done | #18, `IDENTITY.md`; read-only role for the Backrest pages #32 |
 | Infrastructure page in the web UI | done | #22 |
-| Compose variant with Docker socket proxy | done | `docker-compose.apps.yml` |
+| Compose variant with Docker access | done | `docker-compose.apps.yml`; #38 replaced the generic socket proxy by the Relyper Docker guard |
+| Security hardening and patch level | done | #38 – Docker guard, read-only container, `RELYPER_HOOK_COMMANDS`, restic 0.20.0, dependency updates; see `SECURITY.md` |
 | Easypanel template | open | Needs a real Easypanel server to verify paths |
 | Dashboard redesign | done | #28 – backup health summary above the upstream dashboard |
 

@@ -8,8 +8,9 @@
 // restarts or changes other containers.
 //
 // The endpoint comes from RELYPER_DOCKER_HOST, then DOCKER_HOST, then
-// unix:///var/run/docker.sock. A filtering socket proxy (tcp://…) works as
-// long as it allows the endpoints used here.
+// unix:///var/run/docker.sock. The recommended endpoint is the Relyper
+// Docker guard (cmd/relyper-docker-guard), which allows exactly the calls
+// made here; RELYPER_DOCKER_TOKEN is sent to it as a bearer token.
 package docker
 
 import (
@@ -33,6 +34,8 @@ import (
 type Client struct {
 	base string // http://docker or http://host:port
 	http *http.Client
+	// token is sent as a bearer token (Relyper Docker guard). Never logged.
+	token string
 	// Endpoint is the configured address, for display.
 	Endpoint string
 }
@@ -58,7 +61,7 @@ func New(endpoint string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid docker endpoint: %w", err)
 	}
-	c := &Client{Endpoint: endpoint}
+	c := &Client{Endpoint: endpoint, token: strings.TrimSpace(os.Getenv("RELYPER_DOCKER_TOKEN"))}
 	tr := &http.Transport{MaxIdleConns: 4, IdleConnTimeout: 30 * time.Second}
 	switch u.Scheme {
 	case "unix":
@@ -104,6 +107,11 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
+// Do sends one request and decodes the JSON answer into out (may be nil).
+func (c *Client) Do(ctx context.Context, method, path string, query url.Values, body any, out any) error {
+	return c.do(ctx, method, path, query, body, out)
+}
+
 func (c *Client) raw(ctx context.Context, method, path string, query url.Values, body any, contentType string) (*http.Response, error) {
 	var rd io.Reader
 	switch b := body.(type) {
@@ -128,6 +136,9 @@ func (c *Client) raw(ctx context.Context, method, path string, query url.Values,
 	}
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -161,6 +172,36 @@ func (c *Client) Ping(ctx context.Context) (*Version, error) {
 		return nil, err
 	}
 	return &v, nil
+}
+
+// RoleLabel with the value RoleGuard marks the Relyper Docker guard's
+// container (set in its image); discovery does not list it as an app.
+const (
+	RoleLabel = "relyper.role"
+	RoleGuard = "docker-guard"
+)
+
+// GuardPath is answered by the Relyper Docker guard and by nothing else.
+const GuardPath = "/relyper/guard"
+
+// GuardInfo describes the Relyper Docker guard in front of the daemon.
+type GuardInfo struct {
+	Guard        string   `json:"guard"` // "relyper-docker-guard"
+	Features     []string `json:"features"`
+	RequireLabel bool     `json:"require_label"`
+}
+
+// Guard returns the guard's description, or an error when the endpoint is
+// not a Relyper Docker guard (raw socket or another proxy).
+func (c *Client) Guard(ctx context.Context) (*GuardInfo, error) {
+	var g GuardInfo
+	if err := c.do(ctx, http.MethodGet, GuardPath, nil, nil, &g); err != nil {
+		return nil, err
+	}
+	if g.Guard != "relyper-docker-guard" {
+		return nil, errors.New("not a Relyper Docker guard")
+	}
+	return &g, nil
 }
 
 // Info is the part of /info that matters here.

@@ -77,6 +77,30 @@ describe("InfraPage", () => {
     );
   });
 
+  it("shows whether Docker access goes through the guard", async () => {
+    const rep = coverage([shop]);
+    rep.docker.access = "unrestricted";
+    fetchMock.mockResolvedValue(json(rep));
+    const { unmount } = renderWithProviders(<InfraPage />);
+    expect(await screen.findByTestId("infra-summary")).toHaveTextContent(
+      "Unrestricted Docker access",
+    );
+    unmount();
+    const guarded = coverage([shop]);
+    guarded.docker.access = "guard";
+    guarded.docker.guard_features = ["dumps", "restore_tests"];
+    fetchMock.mockResolvedValue(json(guarded));
+    renderWithProviders(<InfraPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("infra-summary")).toHaveTextContent(
+        "Docker guard",
+      ),
+    );
+    expect(screen.getByTestId("infra-summary")).not.toHaveTextContent(
+      "Unrestricted",
+    );
+  });
+
   it("explains when Docker is not reachable", async () => {
     const rep = coverage(null);
     rep.docker = {

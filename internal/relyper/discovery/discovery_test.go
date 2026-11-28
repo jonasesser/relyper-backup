@@ -32,6 +32,7 @@ func TestBuild(t *testing.T) {
 			docker.Mount{Type: "volume", Name: "crm_data", Source: "/var/lib/docker/volumes/crm_data/_data", Destination: "/var/lib/mysql", RW: true}),
 		ctr("d1", "nginx", "nginx:1.27", "exited", nil),
 		ctr("e1", "relyper-verify-1", "postgres:16", "running", map[string]string{docker.VerifyLabel: "true"}),
+		ctr("e2", "relyper-docker-guard", "relyper-docker-guard:latest", "running", map[string]string{docker.RoleLabel: docker.RoleGuard}),
 		ctr("f1", "easypanel.1.x", "easypanel/easypanel:latest", "running", map[string]string{"com.docker.swarm.service.name": "easypanel"}),
 		ctr("g1", "blog_wordpress.1.y", "wordpress:6", "running",
 			map[string]string{"com.docker.swarm.service.name": "blog_wordpress"},

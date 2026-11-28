@@ -16,8 +16,22 @@ services:
     stop_grace_period: 2m # let running restic operations finish on shutdown
     ports:
       - "9898:9898"
+    # Hardening: read-only image, only the capabilities restic needs to read
+    # every file (DAC_READ_SEARCH) and to restore owners and permissions
+    # (CHOWN, DAC_OVERRIDE, FOWNER, FSETID). No privileged mode.
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, DAC_READ_SEARCH, FOWNER, FSETID]
+    security_opt:
+      - no-new-privileges:true
     environment:
       TZ: Europe/Berlin
+      # Hook commands: only the database dump command of app plans may run.
+      # Remove this line (or set "all") to allow your own shell hooks; then
+      # everyone who can edit a plan can run commands in this container.
+      RELYPER_HOOK_COMMANDS: dbdump
       # BACKREST_PORT: "0.0.0.0:9898"
     volumes:
       # Writable application state (configuration, SSH keys, known_hosts).
@@ -33,7 +47,7 @@ services:
       # Optional: local restic repository (prefer remote storage such as SFTP).
       # - /mnt/backup-disk/restic:/repos
       # Docker discovery and database dumps: use docker-compose.apps.yml,
-      # which adds a filtering socket proxy. Do not mount the raw socket;
+      # which adds the Relyper Docker guard. Never mount the raw socket here;
       # access to it equals root on the host, even with :ro.
 
 volumes:

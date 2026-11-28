@@ -13,7 +13,7 @@ merged instead of re-applied by hand.
 | Commit | `875c9cb51e626a75276a64da42c6a9ec0695010a` |
 | Imported | 2026-11-27 |
 | License | GPL-3.0 (`LICENSE`, unchanged) |
-| restic | 0.19.1 (pinned by `internal/resticinstaller`) |
+| restic | 0.20.0 (pinned by `internal/resticinstaller`; upstream v1.14.1 pins 0.19.1) |
 
 ## Remotes
 
@@ -43,6 +43,7 @@ such line carries a `relyper:` comment so it is easy to find during merges
 | `webui/vendor/inlang/` | vendored i18n plugin |
 | `webui/assets/relyper-*` | logo, icon, favicon |
 | `Dockerfile`, `docker-compose.yml`, `.dockerignore` | source build of the single image |
+| `Dockerfile.docker-guard`, `cmd/relyper-docker-guard/` | Relyper Docker guard (only holder of the Docker socket) |
 | `*.md` at the root (except `LICENSE`) | Relyper documentation |
 
 ### Upstream files changed (hook points)
@@ -62,7 +63,10 @@ Keep this list current; it is the merge checklist.
 | `webui/src/app/main.tsx` | renders the customer portal instead of the operator app for `#/portal` | #33 |
 | `internal/auth/auth.go`, `internal/auth/middleware.go` | `SetExternalVerifier`: bearer tokens of Relyper Identity sessions are checked before the upstream JWT | #18 |
 | `webui/src/features/auth/LoginModal.tsx` | renders `RelyperLogin` (sign-in with Relyper Identity) above the password fields | #18 |
-| `webui/package.json` | `start`, `build`, `build-windows`, `compile-i18n` run `relyper/brand-messages.mjs` first | #14 |
+| `webui/package.json` | `start`, `build`, `build-windows`, `compile-i18n` run `relyper/brand-messages.mjs` first; `pnpm.overrides` for `sha.js` and `rollup` (security fixes of build tools) | #14, #38 |
+| `internal/resticinstaller/resticinstaller.go` | `RequiredResticVersion` 0.20.0 | #38 |
+| `internal/resticinstaller/verify.go` | `github.com/ProtonMail/go-crypto/openpgp` instead of the deprecated `golang.org/x/crypto/openpgp` (one argument added) | #38 |
+| `internal/hook/types/command.go` | `hookpolicy.Check` before a command hook runs (`RELYPER_HOOK_COMMANDS`) | #38 |
 | `webui/project.inlang/settings.json` | vendored message-format plugin; messages read from `.relyper-messages/` | #3, #14 |
 | `webui/.gitignore`, `.dockerignore` | generated message catalogs; Docker build context | #11, #14 |
 | `README.md`, `CHANGELOG.md` | replaced by Relyper versions; upstream versions are in Git history and upstream | #15 |

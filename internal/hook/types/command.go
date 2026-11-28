@@ -15,6 +15,7 @@ import (
 	"github.com/garethgeorge/backrest/internal/orchestrator/logging"
 	"github.com/garethgeorge/backrest/internal/orchestrator/tasks"
 	"github.com/garethgeorge/backrest/internal/platformutil"
+	"github.com/garethgeorge/backrest/internal/relyper/hookpolicy"
 	"github.com/google/shlex"
 )
 
@@ -28,6 +29,10 @@ func (commandHandler) Execute(ctx context.Context, h *v1.Hook, vars interface{},
 	command, err := hookutil.RenderTemplate(h.GetActionCommand().GetCommand(), vars)
 	if err != nil {
 		return fmt.Errorf("template rendering: %w", err)
+	}
+	// relyper: RELYPER_HOOK_COMMANDS=dbdump allows only the app plans' dump command.
+	if err := hookpolicy.Check(command); err != nil {
+		return err
 	}
 
 	writer := logging.WriterFromContext(ctx)

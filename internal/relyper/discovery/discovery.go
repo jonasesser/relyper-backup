@@ -51,6 +51,11 @@ type Host struct {
 	Swarm     bool   `json:"swarm"`
 	Easypanel bool   `json:"easypanel"`
 	Error     string `json:"error,omitempty"`
+	// Access is "guard" when the Relyper Docker guard sits in front of the
+	// daemon and "unrestricted" otherwise (raw socket or a generic proxy,
+	// which give root on the host to whoever controls Relyper Backup).
+	Access        string   `json:"access,omitempty"`
+	GuardFeatures []string `json:"guard_features,omitempty"`
 }
 
 // App is a group of services that belong together.
@@ -200,6 +205,10 @@ func Discover(ctx context.Context, c *docker.Client, opt Options) *Inventory {
 		return inv
 	}
 	inv.Docker.Available, inv.Docker.Version = true, v.Version
+	inv.Docker.Access = "unrestricted"
+	if g, err := c.Guard(ctx); err == nil {
+		inv.Docker.Access, inv.Docker.GuardFeatures = "guard", g.Features
+	}
 	info, err := c.Info(ctx)
 	if err == nil {
 		inv.Docker.Name = info.Name
@@ -252,7 +261,7 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 		specs[sv.Spec.Name] = sv
 	}
 	for _, c := range containers {
-		if c.Labels[docker.VerifyLabel] == "true" || isSelf(c.ID, c.Name(), opt.SelfID) || isEasypanelImage(c.Image) {
+		if c.Labels[docker.VerifyLabel] == "true" || c.Labels[docker.RoleLabel] == docker.RoleGuard || isSelf(c.ID, c.Name(), opt.SelfID) || isEasypanelImage(c.Image) {
 			continue
 		}
 		svc := Service{

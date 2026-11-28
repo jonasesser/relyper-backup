@@ -77,5 +77,11 @@
     "vite-plugin-compression": "^0.5.1",
     "vite-tsconfig-paths": "^6.0.3",
     "vitest": "^4.1.10"
+  },
+  "pnpm": {
+    "overrides": {
+      "sha.js": "^2.4.12",
+      "rollup": "^4.59.0"
+    }
   }
 }

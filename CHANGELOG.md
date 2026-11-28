@@ -38,6 +38,17 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 - Web UI page "Infrastructure"; `docker-compose.apps.yml` with a filtering
   Docker socket proxy. (#22)
 
+### Security
+
+- Relyper Docker guard (`Dockerfile.docker-guard`): the only container with
+  the Docker socket. It allows reading the Docker host, the fixed database
+  dump scripts and isolated restore-test containers and refuses everything
+  else; replaces the generic socket proxy, which allowed any command in any
+  container and privileged containers. Container hardening in the compose
+  files (read-only, dropped capabilities, no-new-privileges),
+  `RELYPER_HOOK_COMMANDS=dbdump`, restic 0.20.0, Alpine 3.24, Go and npm
+  dependency updates, docker CLI removed from the image. (#38)
+
 ### Changed
 
 - The i18n plugin is vendored and checksummed instead of loaded from a CDN at

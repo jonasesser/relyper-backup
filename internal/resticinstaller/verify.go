@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"golang.org/x/crypto/openpgp"
+	"github.com/ProtonMail/go-crypto/openpgp" // relyper: maintained drop-in for the deprecated x/crypto/openpgp (GO-2026-5932)
 )
 
 var key = []byte(`
@@ -179,7 +179,7 @@ func gpgVerify(data, sig []byte) (ok bool, err error) {
 		return false, fmt.Errorf("read keyring fialed: %w", err)
 	}
 
-	_, err = openpgp.CheckArmoredDetachedSignature(keyring, bytes.NewReader(data), bytes.NewReader(sig))
+	_, err = openpgp.CheckArmoredDetachedSignature(keyring, bytes.NewReader(data), bytes.NewReader(sig), nil)
 	if err != nil {
 		return false, err
 	}

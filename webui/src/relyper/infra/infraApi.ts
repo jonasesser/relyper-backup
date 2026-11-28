@@ -38,6 +38,9 @@ export type DockerHost = {
   swarm: boolean;
   easypanel: boolean;
   error?: string;
+  // "guard": Relyper Docker guard; "unrestricted": raw socket or a generic proxy.
+  access?: "guard" | "unrestricted";
+  guard_features?: string[];
 };
 
 export type ServiceInfo = {

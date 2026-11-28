@@ -138,3 +138,76 @@ func compareStats(want, got map[string]int64) []string {
 	}
 	return problems
 }
+
+// Fixed commands that are not part of an engine entry.
+const (
+	pgUserPrint       = pgUser + `printf %s "$__u"`
+	restoreDir        = "/tmp/relyper-restore"
+	prepareRestoreDir = "mkdir -p " + restoreDir + " && chmod 777 " + restoreDir
+)
+
+// ExecPolicy lists everything Relyper Backup does inside containers for one
+// database engine. The Docker guard (internal/relyper/dockerguard) allows
+// exactly these commands and nothing else, so a compromised Relyper Backup
+// cannot run arbitrary commands through it.
+type ExecPolicy struct {
+	// Source are the scripts run with "sh -c" in the running database
+	// container (statistics and the dump itself). They take no
+	// environment variables from Relyper Backup.
+	Source []string
+	// Verify are the scripts run in a verification container.
+	Verify []string
+	// VerifyExecEnv are the variable names Relyper Backup may pass to
+	// scripts in a verification container; values are random hex
+	// passwords (VerifyPasswordLen characters).
+	VerifyExecEnv []string
+	// CreateEnv are the variable names of a new verification container;
+	// values are random hex passwords, except UserEnv.
+	CreateEnv []string
+	// UserEnv is the variable holding the database user name recorded at
+	// dump time (PostgreSQL), or "".
+	UserEnv string
+	// ArchiveDirs are the directories a dump may be copied to in a
+	// verification container.
+	ArchiveDirs []string
+}
+
+// VerifyPasswordLen is the length of the random verification passwords.
+const VerifyPasswordLen = 32
+
+// Policy returns the exec policy of an engine.
+func Policy(engineName string) (ExecPolicy, bool) {
+	e, ok := engines[engineName]
+	if !ok {
+		return ExecPolicy{}, false
+	}
+	p := ExecPolicy{
+		Source:        []string{e.stats, e.dump},
+		Verify:        []string{e.ready, e.stats},
+		VerifyExecEnv: []string{"MARIADB_ROOT_PASSWORD"}, // waitReady passes it for every engine
+	}
+	if engineName == discovery.EnginePostgres {
+		p.Source = append(p.Source, pgUserPrint)
+		p.UserEnv = "POSTGRES_USER"
+	}
+	if e.restoreBeforeStart != "" {
+		p.ArchiveDirs = []string{e.restoreBeforeStart}
+	} else {
+		p.Verify = append(p.Verify, prepareRestoreDir, e.restore)
+		p.ArchiveDirs = []string{restoreDir}
+	}
+	// Derive the variable names from the functions that build them, so the
+	// policy cannot drift from what Verify sends.
+	pw := strings.Repeat("0", VerifyPasswordLen)
+	for _, kv := range e.verifyEnv(pw, "") {
+		k, _, _ := strings.Cut(kv, "=")
+		p.CreateEnv = append(p.CreateEnv, k)
+	}
+	for _, kv := range verifyExecEnv(engineName, pw) {
+		k, _, _ := strings.Cut(kv, "=")
+		if k != "MARIADB_ROOT_PASSWORD" {
+			p.VerifyExecEnv = append(p.VerifyExecEnv, k)
+		}
+	}
+	return p, true
+}

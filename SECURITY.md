@@ -46,8 +46,8 @@ https://github.com/garethgeorge/backrest/security.
 | Attacker | Impact today | Mitigation |
 |---|---|---|
 | Anyone on the network before the first user exists | Full control | Create the user at once; do not publish the port before. |
-| Stolen or guessed password, stolen JWT | Full control: read all backups (snapshot browser, downloads), run restores, delete snapshots, change plans, **run hook commands (shell inside the container)** and arbitrary restic commands | Strong unique password, TLS, keep the UI off the public internet or behind an additional auth layer (VPN, SSO proxy). Give Relyper Identity users who only need to look the read-only role `backup_user`. |
-| Compromised Relyper Backup container | Reads mounted sources; with the repository credentials it can **delete every remote backup it can reach** (restic `forget`/`prune`, or deleting files over SFTP) | See "Residual risks". |
+| Stolen or guessed password, stolen JWT | Full control: read all backups (snapshot browser, downloads), run restores, delete snapshots, change plans and arbitrary restic commands. Hook commands (shell inside the container) only with `RELYPER_HOOK_COMMANDS=all`; the compose files set `dbdump`. | Strong unique password, TLS, keep the UI off the public internet or behind an additional auth layer (VPN, SSO proxy). Give Relyper Identity users who only need to look the read-only role `backup_user`. |
+| Compromised Relyper Backup container (e.g. through a vulnerability) | Reads mounted sources; with the repository credentials it can **delete every remote backup it can reach** (restic `forget`/`prune`, or deleting files over SFTP). It does **not** get root on the host: there is no Docker socket in the container, the Relyper Docker guard refuses everything except the fixed dump and restore-test calls, and the container runs read-only with five capabilities. | See "Residual risks" and "Docker access". |
 | Man-in-the-middle on the SFTP connection | Prevented by host key verification; a changed key stops all connections until a human decides. | Compare fingerprints with the provider. |
 | Malicious content in backed-up files, logs, metadata | Shown in the UI as text; passed to AI clients via MCP. | Treat as untrusted input; never execute it; MCP tool descriptions and server instructions mark it as untrusted data. |
 | Malicious restore paths | restic restores into the chosen target; a restore over production paths can overwrite data. | Restore into a staging directory (`/restore`); mount production read-only. |
@@ -71,21 +71,56 @@ https://github.com/garethgeorge/backrest/security.
 - **Two roles only.** Users signed in through Relyper Identity with `backup_user` are read-only (server-side, deny by default, secrets redacted); `backup_admin` and local users have full rights. Finer roles (run backups but not delete, …) do not exist yet. MCP credentials themselves are scoped.
 - **MCP exposure.** Connecting claude.ai or ChatGPT requires the instance to be reachable from the internet. The OAuth consent page accepts the web UI password; use a strong password. A repository password given to `create_repository` passes through the AI provider.
 - **Docker access.** Mounting the socket gives root on the host, even with
-  `:ro`. Application-aware backup needs more than read access: it runs the
-  dump tools inside database containers (`exec`) and creates, starts and
-  removes throwaway restore-test containers. `docker-compose.apps.yml` puts a
-  filtering socket proxy in between that blocks images, networks, secrets,
-  configs, plugins, build and system endpoints, but whoever controls Relyper
-  Backup can still run commands in your containers. Treat admin access to
-  Relyper Backup like root on the Docker host. Relyper Backup itself only
-  runs fixed dump/restore commands, never commands from the UI or MCP
-  clients; app IDs are validated, and it only removes containers labelled
-  `relyper.verify=true`.
+  `:ro`, and so does a generic socket proxy that allows `exec` and
+  container creation (the setup before #38). Relyper Backup therefore never
+  gets the socket. It talks to the **Relyper Docker guard**
+  (`cmd/relyper-docker-guard`), a separate 10 MB container with one static
+  binary that allows exactly the calls Relyper Backup makes: reading the
+  Docker host (environment values removed), the fixed dump scripts in
+  running database containers, and restore-test containers without network,
+  mounts or privileges from images that already run as databases. Request
+  bodies are checked field by field and rebuilt by the guard; the commands
+  are compared with the guard's own compiled-in copy of the scripts, so a
+  compromised Relyper Backup cannot change them. Each write feature is off
+  unless enabled; stop/restart of containers is off by default. Residual:
+  someone who controls Relyper Backup can read database contents through
+  the dump scripts (the backups contain them anyway), start isolated
+  restore-test containers and, if enabled, stop or restart containers. The
+  guard is now the component holding root-equivalent access: keep it on an
+  internal network, set `RELYPER_GUARD_TOKEN` and never publish its port.
+  Details in `DEPLOYMENT.md`, "Relyper Docker guard".
 - **Database credentials** stay inside the database containers: the dump
   runs there and reads the password from the container's own environment or
   `*_FILE` secret. Relyper Backup does not store or log them.
-- **Hook commands** run arbitrary shell commands inside the container by
-  design. Anyone who can edit plans can run commands.
+- **Hook commands** are an upstream feature that runs any shell command
+  inside the container. With `RELYPER_HOOK_COMMANDS=dbdump` (set in the
+  compose files) only the `relyper-dbdump` command of app plans runs; every
+  other command hook fails before it starts. Webhook-style hooks (Discord,
+  Slack, Gotify, Healthchecks, shoutrrr) are not affected. Even with `all`,
+  commands run in the hardened container, not on the host.
+- **Container hardening.** The compose files run Relyper Backup with a
+  read-only root filesystem, `cap_drop: ALL` plus `CHOWN`, `DAC_OVERRIDE`,
+  `DAC_READ_SEARCH`, `FOWNER`, `FSETID` (reading every source file and
+  restoring owners needs them) and `no-new-privileges`. The process is root
+  inside the container; non-root cannot read other users' volume data.
+  Easypanel cannot set these options for App services.
+
+## Patch level
+
+Checked on 2026-11-28 (#38):
+
+| Component | State |
+|---|---|
+| Backrest (upstream) | v1.14.1 is the latest release; nothing to merge. |
+| restic | 0.20.0 (from 0.19.1): fixes two restore security issues (wrong owners with `--ownership-by-name`, duplicate or unsorted node names). |
+| Go toolchain | Image builds with the newest `golang:1.26` patch (1.26.11), which fixes all standard-library findings of `govulncheck`. Local builds with an older 1.26.x show them. |
+| Go modules | `golang.org/x/net`, `x/crypto`, `x/text`, `grpc`, `go-jose`, `gorilla/websocket` updated. The restic signature check moved from the deprecated `x/crypto/openpgp` to `github.com/ProtonMail/go-crypto` (GO-2026-5932). `govulncheck`: no finding left in Relyper Backup's own modules with Go 1.26.11. |
+| Web UI (npm) | `pnpm audit`: 29 findings before, 0 after (lockfile updates within the existing version ranges; overrides for `sha.js` and `rollup`). All were build or test tools except `react-router` (RSC mode, not used). |
+| Runtime image | Alpine 3.24 with `apk upgrade`; Trivy: 0 OS findings. The docker CLI was removed from the image. |
+| restic binary | restic's own release binary still contains `x/crypto/openpgp` (Trivy GO-2026-5932, severity unknown); restic does not use it for anything Relyper Backup calls. Fixed only by a later restic release. |
+
+How to re-check: `govulncheck ./...`, `pnpm audit` in `webui/`, and an
+image scanner (e.g. `trivy image relyper-backup`) on the built images.
 
 ## Planned security work
 
@@ -103,8 +138,13 @@ the checks it makes and its limits.
 - [ ] First user created before the port is reachable from other machines.
 - [ ] UI only via HTTPS; ideally only via VPN or behind SSO.
 - [ ] Source mounts read-only; restores go to `/restore`.
-- [ ] Docker socket not mounted directly; only through the filtering proxy
-      of `docker-compose.apps.yml`, on an internal network.
+- [ ] Docker socket mounted only into the Relyper Docker guard, never into
+      Relyper Backup; guard on an internal network with `RELYPER_GUARD_TOKEN`
+      set; Infrastructure page shows "Docker guard".
+- [ ] `RELYPER_HOOK_COMMANDS=dbdump` unless you need own shell hooks.
+- [ ] Container hardening of the compose files kept (`read_only`,
+      `cap_drop`, `no-new-privileges`).
+- [ ] Image rebuilt regularly for Go, Alpine and restic fixes.
 - [ ] `/config` backed up offline; repository passwords stored outside the
       host (password manager). See `DISASTER-RECOVERY.md`.
 - [ ] At least one backup copy the instance cannot delete.

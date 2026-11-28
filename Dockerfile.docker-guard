@@ -1,0 +1,38 @@
+# syntax=docker/dockerfile:1.7
+#
+# Relyper Docker guard – the only container that holds the Docker socket in a
+# Relyper Backup deployment. It allows reading the Docker host, the fixed
+# database dump scripts and isolated restore-test containers, and refuses
+# everything else (see internal/relyper/dockerguard and DEPLOYMENT.md).
+#
+#   docker build -f Dockerfile.docker-guard -t relyper-docker-guard .
+#
+# The image holds a single static binary and nothing else: no shell, no
+# package manager, no Docker CLI.
+
+ARG GO_VERSION=1.26
+
+FROM golang:${GO_VERSION}-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd/relyper-docker-guard ./cmd/relyper-docker-guard
+COPY internal/relyper ./internal/relyper
+ENV CGO_ENABLED=0
+RUN go build -trimpath -ldflags "-s -w" -o /out/relyper-docker-guard ./cmd/relyper-docker-guard
+
+FROM scratch
+LABEL org.opencontainers.image.title="Relyper Docker guard" \
+      org.opencontainers.image.description="Allow-list gateway between Relyper Backup and the Docker socket" \
+      org.opencontainers.image.source="https://github.com/jonasesser/relyper-backup" \
+      org.opencontainers.image.licenses="GPL-3.0-only" \
+      relyper.role="docker-guard"
+COPY --from=build /out/relyper-docker-guard /relyper-docker-guard
+# Root is needed to open the Docker socket (root:docker 0660, the group ID
+# differs between hosts). Run with cap_drop: [ALL], no-new-privileges and a
+# read-only root filesystem; the process needs no capability.
+USER 0:0
+EXPOSE 2375
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD ["/relyper-docker-guard", "health"]
+ENTRYPOINT ["/relyper-docker-guard"]

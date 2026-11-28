@@ -349,8 +349,10 @@ const AppCard = ({
   const [showCreate, setShowCreate] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const hasDB = app.items.some((i) => i.kind === "database");
-  const hasAppPlan = app.items.some((i) => i.kind === "database" && i.plan);
+  // The server sends null for apps without data items.
+  const items = app.items || [];
+  const hasDB = items.some((i) => i.kind === "database");
+  const hasAppPlan = items.some((i) => i.kind === "database" && i.plan);
   const plan = (app.plans || [])[0];
 
   const act = async (name: string, fn: () => Promise<unknown>, ok: string) => {
@@ -381,7 +383,7 @@ const AppCard = ({
           ))}
         </Flex>
         <Stack gap={0} fontSize="sm">
-          {app.items.map((it, i) => (
+          {items.map((it, i) => (
             <Flex
               key={i}
               gap={2}
@@ -421,7 +423,7 @@ const AppCard = ({
               </Flex>
             </Flex>
           ))}
-          {app.items.length === 0 && (
+          {items.length === 0 && (
             <Text color="fg.muted">Nothing to back up.</Text>
           )}
         </Stack>
@@ -455,7 +457,7 @@ const AppCard = ({
               {showDetails ? "Hide services" : "Services"}
             </Button>
           )}
-          {!hasAppPlan && app.items.length > 0 && (
+          {!hasAppPlan && items.length > 0 && (
             <Button
               size="sm"
               variant="outline"
@@ -661,21 +663,23 @@ export const EasypanelDockerSteps = () => (
     <Text fontWeight="medium">On Easypanel</Text>
     <Stack as="ol" gap={1} ps={5} mt={1} listStyleType="decimal">
       <li>
-        In the same project, add an App service <Code>docker-proxy</Code> from
-        the image <Code>tecnativa/docker-socket-proxy:v0.4.1</Code> with the
-        bind mount <Code>/var/run/docker.sock</Code> →{" "}
-        <Code>/var/run/docker.sock</Code> and the environment{" "}
+        In the same project, add an App service <Code>docker-guard</Code> built
+        from this repository with the Dockerfile{" "}
+        <Code>Dockerfile.docker-guard</Code>, the bind mount{" "}
+        <Code>/var/run/docker.sock</Code> → <Code>/var/run/docker.sock</Code>{" "}
+        and the environment{" "}
         <Code>
-          CONTAINERS=1 EXEC=1 POST=1 INFO=1 VOLUMES=1 SERVICES=1 TASKS=1 NODES=1
+          RELYPER_GUARD_TOKEN=&lt;random token&gt; RELYPER_GUARD_DUMPS=1
+          RELYPER_GUARD_VERIFY=1
         </Code>
-        . Publish no domain and no port. If its log says &quot;Address family
-        not supported&quot;, add <Code>DISABLE_IPV6=1</Code>.
+        . Publish no domain and no port. The guard is the only service with the
+        Docker socket and allows only dumps and restore tests.
       </li>
       <li>
         On the Relyper Backup service set{" "}
-        <Code>RELYPER_DOCKER_HOST=tcp://&lt;project&gt;_docker-proxy:2375</Code>
-        ; Easypanel reaches services as{" "}
-        <Code>&lt;project&gt;_&lt;service&gt;</Code>.
+        <Code>RELYPER_DOCKER_HOST=tcp://&lt;project&gt;_docker-guard:2375</Code>{" "}
+        and <Code>RELYPER_DOCKER_TOKEN=&lt;the same token&gt;</Code>; Easypanel
+        reaches services as <Code>&lt;project&gt;_&lt;service&gt;</Code>.
       </li>
       <li>
         Add the bind mounts <Code>/var/lib/docker/volumes</Code> and{" "}
@@ -804,9 +808,10 @@ export const InfraPage = () => {
         <SectionCard title="Docker not reachable">
           <Text fontSize="sm">
             Relyper Backup cannot reach Docker at <Code>{docker.endpoint}</Code>
-            : {docker.error}. Mount the Docker socket (ideally through a socket
-            proxy) and set <Code>RELYPER_DOCKER_HOST</Code>; see DEPLOYMENT.md.
-            Backups of plain paths keep working without it.
+            : {docker.error}. Run the Relyper Docker guard and set{" "}
+            <Code>RELYPER_DOCKER_HOST</Code> and{" "}
+            <Code>RELYPER_DOCKER_TOKEN</Code>; see DEPLOYMENT.md. Backups of
+            plain paths keep working without it.
           </Text>
           <EasypanelDockerSteps />
         </SectionCard>
@@ -822,6 +827,25 @@ export const InfraPage = () => {
           <Badge>Docker {docker.version}</Badge>
           {docker.swarm && <Badge>Swarm</Badge>}
           {docker.easypanel && <Badge>Easypanel</Badge>}
+          {docker.access === "guard" ? (
+            <Badge
+              colorPalette="green"
+              title={`Docker access through the Relyper Docker guard. Enabled: ${
+                (docker.guard_features || []).join(", ") || "read only"
+              }`}
+            >
+              Docker guard
+            </Badge>
+          ) : (
+            docker.access === "unrestricted" && (
+              <Badge
+                colorPalette="orange"
+                title="Relyper Backup has unrestricted Docker access (raw socket or a generic proxy). Whoever takes over Relyper Backup gets root on the host. Use the Relyper Docker guard, see DEPLOYMENT.md."
+              >
+                Unrestricted Docker access
+              </Badge>
+            )
+          )}
           <Badge colorPalette="green">
             {counts(["fully_protected"])} fully protected
           </Badge>

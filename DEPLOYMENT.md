@@ -3,8 +3,10 @@
 Relyper Backup ships as **one Docker image** built from the `Dockerfile` in
 this repository. The container runs the complete product: web UI, API and
 scheduler (one Go process), plus the tools it drives – restic, rclone and the
-OpenSSH client for SFTP repositories. No database container, sidecar or
-separate MCP container is needed.
+OpenSSH client for SFTP repositories. No database container or separate MCP
+container is needed. Only application-aware backup (Docker discovery and
+database dumps) adds a second, tiny container: the Relyper Docker guard,
+the only place that holds the Docker socket.
 
 ## Quick start (Docker Compose)
 
@@ -29,12 +31,41 @@ docker build \
 The build has three stages: web UI (Node 22, pnpm 9), Go server (static
 binary, `CGO_ENABLED=0`) and an Alpine runtime. During the build the server
 downloads the restic version it is tested with
-(`internal/resticinstaller`, currently 0.19.1) and verifies its SHA-256 sums
+(`internal/resticinstaller`, currently 0.20.0) and verifies its SHA-256 sums
 and signature before it is copied into the image.
 
 Network access needed at build time: Docker Hub (base images),
 `registry.npmjs.org`, `proxy.golang.org`, `github.com` (restic release),
-`dl-cdn.alpinelinux.org` (runtime packages).
+`dl-cdn.alpinelinux.org` (runtime packages). The runtime stage runs
+`apk upgrade`, so a rebuild picks up Alpine security fixes; the Go stage
+uses the newest `golang:1.26` patch release. Rebuild regularly (e.g.
+monthly and after Go or Alpine security announcements).
+
+## Container hardening
+
+`docker-compose.yml` and `docker-compose.apps.yml` run Relyper Backup with
+
+- `read_only: true` – the image cannot be changed at runtime; only the
+  volumes `/config`, `/data`, `/cache`, the restore staging directory and a
+  `tmpfs` on `/tmp` are writable;
+- `cap_drop: [ALL]` and only `CHOWN`, `DAC_OVERRIDE`, `DAC_READ_SEARCH`,
+  `FOWNER`, `FSETID` added back – what restic needs to read every file of
+  the sources and to restore owners and permissions; no network, mount,
+  module, ptrace or admin capabilities;
+- `no-new-privileges:true`.
+
+The process runs as root *inside* the container with these few
+capabilities. A non-root user cannot read Docker volume data owned by other
+users or restore file owners, so non-root is not offered. On hosts with
+user namespace remapping (`userns-remap`) container root is not host root.
+
+`/tmp` is a RAM disk (`tmpfs`); restic keeps temporary pack files there
+during a backup. On hosts with very little RAM set `TMPDIR` to a directory
+on a volume instead (e.g. `/cache/tmp`, created beforehand).
+
+rclone keeps its configuration in `/root/.config/rclone` by default, which is
+read-only now: set `RCLONE_CONFIG=/config/rclone/rclone.conf` when you use
+rclone repositories.
 
 ## Container layout
 
@@ -83,7 +114,9 @@ The `BACKREST_*` names are kept from upstream so existing Backrest
 configurations and documentation keep working.
 
 | `RELYPER_OIDC_*` | unset | Sign-in with Relyper Identity; see `IDENTITY.md`. |
-| `RELYPER_DOCKER_HOST` | `DOCKER_HOST`, else `unix:///var/run/docker.sock` | Docker API for discovery, dumps and restore tests (`unix://` or `tcp://`). |
+| `RELYPER_DOCKER_HOST` | `DOCKER_HOST`, else `unix:///var/run/docker.sock` | Docker API for discovery, dumps and restore tests (`unix://` or `tcp://`). Point it at the Relyper Docker guard, e.g. `tcp://docker-guard:2375`. |
+| `RELYPER_HOOK_COMMANDS` | `all` | `dbdump`: command hooks may only run the `relyper-dbdump` command of app plans; any other shell hook fails without running. `all` (upstream behaviour): any command. The compose files set `dbdump`. |
+| `RELYPER_DOCKER_TOKEN` | unset | Token sent to the Relyper Docker guard (same value as `RELYPER_GUARD_TOKEN` there). Secret; never shown or logged. |
 | `RELYPER_HOST_PATH_MAP` | unset | Host paths mounted elsewhere in the container, e.g. `/srv=/sources/srv,/opt/data=/sources/opt`. |
 | `RELYPER_DUMP_DIR` | `<data>/relyper/dumps` | Where database dumps are written before the backup. |
 | `RELYPER_COVERAGE_MAX_AGE_HOURS` | `48` | A snapshot older than this counts as stale. |
@@ -132,21 +165,37 @@ Easypanel is the primary target. Create an **App** service:
    every snapshot, and Backrest uses it to match snapshots to plans.
 
 For application-aware backup of the other Easypanel projects, add the
-Docker connection and mounts described in "Application-aware backup" below.
-On Easypanel:
+Relyper Docker guard as a second service in the same Easypanel project, then
+the Docker connection and mounts described in "Application-aware backup"
+below:
 
-1. Add a second App service `docker-proxy` in the same project, image
-   `tecnativa/docker-socket-proxy:v0.4.1`, bind mount
-   `/var/run/docker.sock` → `/var/run/docker.sock`, environment
-   `CONTAINERS=1 EXEC=1 POST=1 INFO=1 VOLUMES=1 SERVICES=1 TASKS=1 NODES=1`
-   (plus `DISABLE_IPV6=1` if the log says "Address family not supported").
-   Publish no domain and no port.
-2. On the Relyper Backup service set
-   `RELYPER_DOCKER_HOST=tcp://<project>_docker-proxy:2375`.
-3. Bind mount `/var/lib/docker/volumes` and `/etc/easypanel/projects` at the
-   same path inside the Relyper Backup container.
-4. Deploy and press Refresh on the Infrastructure page. While Docker is not
-   reachable the page shows these steps too.
+1. Create a random token, e.g. `openssl rand -hex 32`.
+2. Create an **App** service `docker-guard`: source the same repository and
+   branch, build **Dockerfile** with path `Dockerfile.docker-guard`. No
+   domain, no published port.
+3. Mounts of `docker-guard`: bind mount host path `/var/run/docker.sock` →
+   `/var/run/docker.sock`. This is the only service that gets the socket.
+4. Environment of `docker-guard`: `RELYPER_GUARD_TOKEN=<token>`,
+   `RELYPER_GUARD_DUMPS=1`, `RELYPER_GUARD_VERIFY=1` (and
+   `RELYPER_GUARD_LIFECYCLE=1` only if MCP clients should stop/restart
+   containers).
+5. Environment of the Relyper Backup service:
+   `RELYPER_DOCKER_HOST=tcp://<project>_docker-guard:2375` (Easypanel's
+   internal host name is `<project>_<service>`; check it on the service
+   page) and `RELYPER_DOCKER_TOKEN=<token>`. Remove any Docker socket mount
+   and any `tecnativa/docker-socket-proxy` service from earlier setups.
+6. Bind mount `/var/lib/docker/volumes` and `/etc/easypanel/projects` at the
+   same path inside the Relyper Backup container (read-only if your
+   Easypanel version offers it).
+7. Deploy both and press Refresh on the Infrastructure page: it must show
+   the green "Docker guard" badge. While Docker is not reachable the page
+   shows these steps too.
+
+Easypanel's UI cannot set `read_only`, `cap_drop` or `no-new-privileges` for
+App services, so on Easypanel the container hardening of the compose files
+is not applied; the guard still keeps the socket away from Relyper Backup.
+The guard is reachable on the project's internal network by every service of
+that project, which is why the token is required there.
 
 **Zero Downtime works.** Only one process may use the data directory, so
 during a zero-downtime deploy the two containers hand over:
@@ -178,19 +227,19 @@ the first start and report anything that is grouped wrongly.
 Use `docker-compose.apps.yml` instead of `docker-compose.yml`:
 
 ```bash
+echo "RELYPER_GUARD_TOKEN=$(openssl rand -hex 32)" > .env
 docker compose -f docker-compose.apps.yml up -d --build
 ```
 
 It adds three things:
 
-1. **A Docker socket proxy** (`tecnativa/docker-socket-proxy`) on an internal
-   network. Relyper Backup reaches Docker only through it
-   (`RELYPER_DOCKER_HOST=tcp://docker-proxy:2375`). Allowed: reading
-   containers, volumes, services, tasks, nodes and system info; `exec`
-   (database dumps); creating, starting and removing containers (restore
-   tests). Blocked: images, networks, secrets, configs, plugins, build,
-   system. On hosts without IPv6 in Docker keep `DISABLE_IPV6=1`, otherwise
-   the proxy does not start.
+1. **The Relyper Docker guard** (`Dockerfile.docker-guard`,
+   `cmd/relyper-docker-guard`): a separate container of about 10 MB (one
+   static binary, no shell) that holds the Docker socket. Relyper Backup
+   itself has **no** access to the socket; it reaches the guard over an
+   internal network (`RELYPER_DOCKER_HOST=tcp://docker-guard:2375`) with a
+   token (`RELYPER_DOCKER_TOKEN` = the guard's `RELYPER_GUARD_TOKEN`). See
+   "Relyper Docker guard" below for what it allows.
 2. **Docker volumes at their real path**, read-only:
    `/var/lib/docker/volumes:/var/lib/docker/volumes:ro`. Plans use the paths
    Docker reports, so they must exist at the same path inside the container.
@@ -226,6 +275,57 @@ Limits:
 - `RELYPER_DUMP_DIR` must be inside the container's own storage (default
   `/data/relyper/dumps`); the dumps take as much space as the databases.
 
+### Relyper Docker guard
+
+Whoever can use the Docker API freely is root on the host: one
+`docker run --privileged -v /:/host` is enough. A generic socket proxy that
+allows `exec` and `create` (as Relyper Backup used before) does not change
+that. The guard therefore does not filter by endpoint but by content. It
+knows the exact calls Relyper Backup makes and refuses everything else with
+`403 blocked by relyper-docker-guard: …`:
+
+| Allowed | Conditions |
+|---|---|
+| Reading containers, volumes, Swarm services and tasks, system info | Always. Values of environment variables are removed (other apps keep their secrets); names stay. |
+| Database dumps (`RELYPER_GUARD_DUMPS=1`) | Only `sh -c <script>` where the script is one of the fixed dump and statistics scripts of `internal/relyper/dbdump` for the detected engine; only in running containers of a known database image (postgres, mysql, mariadb, mongo, redis and variants); no extra environment variables, no other user, no TTY. |
+| Restore tests (`RELYPER_GUARD_VERIFY=1`) | Create only containers named `relyper-verify-<hex>`, from an image that already runs as a database on the host (never pulled), with network `none`, no mounts, not privileged, `no-new-privileges`, a process limit, label `relyper.verify=true` and only random hex passwords as environment. The guard builds the request itself. Start, copy the dump into the fixed restore directory, run the fixed restore scripts: only for containers this guard created. Remove: only containers labelled `relyper.verify=true` with that name pattern. |
+| Stop and restart containers (`RELYPER_GUARD_LIFECYCLE=1`) | Off by default. Needed for the MCP tools `stop_container` / `restart_container` (they also need an approval in the web UI). |
+
+Everything else is refused: images, build, networks, volumes create/remove,
+secrets, configs, plugins, swarm, system, `attach`, `update`, `kill`,
+file copies out of containers, exec of any other command, and any request
+body with fields the guard does not know. Each allowed write and each
+refusal is logged on the guard's stdout (without environment values).
+
+Options of the guard:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `RELYPER_GUARD_TOKEN` | unset | Required bearer token. Without it, every container on the guard's network could use it (a warning is logged). |
+| `RELYPER_GUARD_DUMPS` | off | Allow the fixed dump scripts. |
+| `RELYPER_GUARD_VERIFY` | off | Allow restore-test containers. |
+| `RELYPER_GUARD_LIFECYCLE` | off | Allow stop/restart of containers. |
+| `RELYPER_GUARD_REQUIRE_LABEL` | off | Dumps and restore-test images only for containers labelled `relyper.dump=true` (opt-in per database). |
+| `RELYPER_GUARD_LISTEN` | `:2375` | Listen address. Never publish this port. |
+| `RELYPER_GUARD_UPSTREAM` | `unix:///var/run/docker.sock` | Docker socket. |
+
+With no write option set the guard is read-only: discovery and coverage
+work, database dumps and restore tests fail with a clear message.
+
+What remains possible for someone who takes over Relyper Backup: read the
+database contents through the dump scripts (the backups contain them anyway),
+start isolated restore-test containers, see container metadata (not
+environment values), and stop or restart containers if
+`RELYPER_GUARD_LIFECYCLE=1`. Not possible: run own commands in your
+containers, start privileged containers, mount host paths, pull images.
+The guard itself is the component that must stay trustworthy: it has no
+shell, no other API, runs read-only with all capabilities dropped and should
+only be reachable from Relyper Backup.
+
+The Infrastructure page shows a green "Docker guard" badge when Relyper
+Backup talks to the guard and an orange "Unrestricted Docker access" badge
+when it is connected to the raw socket or another proxy.
+
 ### Notifications
 
 Set `RELYPER_NOTIFY_URLS` to one or more
@@ -257,7 +357,7 @@ secrets; they are never shown in the UI or logs.
 
 | Option | What it allows | Risk |
 |---|---|---|
-| Docker socket (`/var/run/docker.sock`), even `:ro` | hook scripts using `docker`; discovery, dumps and restore tests (use the proxy of `docker-compose.apps.yml`) | The Docker API can start privileged containers that mount the host's root filesystem. **Access to the socket is equivalent to root on the host**, the `:ro` flag on the socket file does not restrict the API. Never mount it directly; use the filtering proxy, which still allows `exec` and container creation (see above). |
+| Docker socket (`/var/run/docker.sock`), even `:ro` | discovery, dumps and restore tests | The Docker API can start privileged containers that mount the host's root filesystem. **Access to the socket is equivalent to root on the host**, the `:ro` flag on the socket file does not restrict the API. Never mount it into Relyper Backup; mount it only into the Relyper Docker guard (see above). |
 | Broad read-only host mount | backing up arbitrary host paths | Every admin of Relyper Backup can read every mounted file, including secrets on the host. |
 | Writable production mounts | restoring in place | A wrong restore or a compromised instance can overwrite production data. Restore to `/restore` instead. |
 | `privileged: true`, `cap_add` | not needed | Not required by any feature. Do not use. |

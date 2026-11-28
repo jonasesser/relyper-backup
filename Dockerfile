@@ -11,10 +11,13 @@
 #   docker compose up -d          # see docker-compose.yml
 #
 # See DEPLOYMENT.md for mounts, environment variables and security notes.
+# The image runs with a read-only root filesystem (only /config, /data,
+# /cache, /restore and a tmpfs /tmp are written) and the capabilities listed
+# in docker-compose.yml.
 
 ARG GO_VERSION=1.26
 ARG NODE_VERSION=22
-ARG ALPINE_VERSION=3.22
+ARG ALPINE_VERSION=3.24
 
 # --- Stage 1: web UI ---------------------------------------------------------
 FROM node:${NODE_VERSION}-alpine AS webui
@@ -59,9 +62,12 @@ LABEL org.opencontainers.image.title="Relyper Backup" \
 
 # tini: init process (signal forwarding, zombie reaping)
 # openssh-client: SFTP repositories; rclone: rclone-based repositories
-# docker-cli: kept for parity with upstream images (used by hook scripts)
-RUN apk add --no-cache tini ca-certificates tzdata bash curl openssh-client rclone docker-cli && \
-    mkdir -p /config /data /cache /tmp && chmod 1777 /tmp
+# No docker CLI: Relyper Backup reaches Docker only through the Relyper
+# Docker guard (Dockerfile.docker-guard), which refuses generic commands.
+# apk upgrade pulls security fixes released after the base image was built.
+RUN apk upgrade --no-cache && \
+    apk add --no-cache tini ca-certificates tzdata bash curl openssh-client rclone && \
+    mkdir -p /config /data /cache /tmp /restore && chmod 1777 /tmp
 
 COPY --from=server /out/restic /usr/local/bin/restic
 COPY --from=server /out/backrest /backrest
