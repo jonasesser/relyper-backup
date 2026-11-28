@@ -41,6 +41,8 @@ export type DockerHost = {
   // "guard": Relyper Docker guard; "unrestricted": raw socket or a generic proxy.
   access?: "guard" | "unrestricted";
   guard_features?: string[];
+  // Plain-language reason when Docker is not reachable.
+  hint?: string;
 };
 
 export type ServiceInfo = {

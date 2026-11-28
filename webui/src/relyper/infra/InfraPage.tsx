@@ -834,6 +834,18 @@ export const InfraPage = () => {
       )}
       {docker && !docker.available && (
         <SectionCard title="Docker not reachable">
+          {docker.hint && (
+            <Text
+              fontSize="sm"
+              fontWeight="medium"
+              color="red.600"
+              _dark={{ color: "red.300" }}
+              mb={2}
+              data-testid="docker-hint"
+            >
+              {docker.hint}
+            </Text>
+          )}
           <Text fontSize="sm">
             Relyper Backup cannot reach Docker at <Code>{docker.endpoint}</Code>
             : {docker.error}. Run the Relyper Docker guard and set{" "}

@@ -75,6 +75,13 @@ func main() {
 		features = []string{"read-only"}
 	}
 	logger.Printf("listening on %s, upstream %s, enabled: %s", listen, cfg.Upstream, strings.Join(features, ", "))
+	cctx, ccancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := g.CheckUpstream(cctx); err != nil {
+		logger.Printf("ERROR: cannot reach Docker at %s: %v - mount /var/run/docker.sock into this container", cfg.Upstream, err)
+	} else {
+		logger.Printf("Docker reachable at %s", cfg.Upstream)
+	}
+	ccancel()
 	srv := &http.Server{Addr: listen, Handler: g, ReadHeaderTimeout: 10 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()

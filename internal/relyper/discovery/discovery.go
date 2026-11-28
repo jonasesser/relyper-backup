@@ -56,6 +56,8 @@ type Host struct {
 	// which give root on the host to whoever controls Relyper Backup).
 	Access        string   `json:"access,omitempty"`
 	GuardFeatures []string `json:"guard_features,omitempty"`
+	// Hint explains a failed connection in plain words.
+	Hint string `json:"hint,omitempty"`
 }
 
 // App is a group of services that belong together.
@@ -202,6 +204,7 @@ func Discover(ctx context.Context, c *docker.Client, opt Options) *Inventory {
 	v, err := c.Ping(ctx)
 	if err != nil {
 		inv.Docker.Error = err.Error()
+		inv.Docker.Hint = docker.Diagnose(c.Endpoint, err)
 		return inv
 	}
 	inv.Docker.Available, inv.Docker.Version = true, v.Version

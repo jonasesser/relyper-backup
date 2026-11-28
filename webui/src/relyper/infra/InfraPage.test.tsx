@@ -109,10 +109,14 @@ describe("InfraPage", () => {
       swarm: false,
       easypanel: false,
       error: "no such file",
+      hint: "No Docker guard is configured in this container",
     };
     fetchMock.mockResolvedValue(json(rep));
     renderWithProviders(<InfraPage />);
     expect(await screen.findByText("Docker not reachable")).toBeInTheDocument();
+    expect(screen.getByTestId("docker-hint")).toHaveTextContent(
+      "No Docker guard is configured",
+    );
   });
 
   it("creates an app plan in the chosen repository", async () => {

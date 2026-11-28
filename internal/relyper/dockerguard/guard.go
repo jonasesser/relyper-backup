@@ -128,8 +128,18 @@ func New(cfg Config) (*Guard, error) {
 		},
 		Transport:     tr,
 		FlushInterval: -1, // exec output is streamed
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			g.log.Printf("docker is not reachable at %s: %v", cfg.Upstream, err)
+			writeJSON(w, http.StatusBadGateway, map[string]string{"message": "blocked by relyper-docker-guard: docker is not reachable (is /var/run/docker.sock mounted into the guard?)"})
+		},
 	}
 	return g, nil
+}
+
+// CheckUpstream pings the Docker daemon once.
+func (g *Guard) CheckUpstream(ctx context.Context) error {
+	_, err := g.docker.Ping(ctx)
+	return err
 }
 
 // Features lists the enabled write features.
