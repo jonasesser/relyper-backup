@@ -26,6 +26,24 @@ type AppPlan struct {
 	Databases   []string `json:"databases,omitempty"`
 	Skipped     []string `json:"skipped,omitempty"` // data that cannot be backed up from here, with the reason
 	Warnings    []string `json:"warnings,omitempty"`
+	// Items is everything the plan can back up, with a default choice.
+	// Paths holds the chosen ones; Excludes the paths of items that are
+	// not chosen but lie inside a chosen directory.
+	Items    []PlanItem `json:"items"`
+	Excludes []string   `json:"excludes,omitempty"`
+}
+
+// PlanItem is one path an app plan can back up.
+type PlanItem struct {
+	Path    string `json:"path"`
+	Kind    string `json:"kind"` // config, data, easypanel, dumps, inventory
+	Service string `json:"service,omitempty"`
+	Label   string `json:"label"`
+	Class   string `json:"class,omitempty"`
+	// Selected is the default choice; Required items cannot be left out.
+	Selected bool   `json:"selected"`
+	Required bool   `json:"required,omitempty"`
+	Note     string `json:"note,omitempty"`
 }
 
 var planIDRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
@@ -55,6 +73,48 @@ func (s *Service) ProposeAppPlan(ctx context.Context, appID string) (*AppPlan, e
 	}
 	p := &AppPlan{App: appID, PlanID: DefaultPlanID(appID)}
 	seen := map[string]bool{}
+	add := func(it PlanItem) {
+		if it.Path == "" || seen[it.Path] {
+			return
+		}
+		seen[it.Path] = true
+		p.Items = append(p.Items, it)
+	}
+	// Configuration first: the whole compose project directory (compose
+	// files, .env, override files), else the single compose files.
+	for _, d := range app.ConfigDirs {
+		if d.BackupPath == "" {
+			p.Skipped = append(p.Skipped, "compose directory "+d.HostPath+" (with .env) is not mounted into Relyper Backup")
+			continue
+		}
+		add(PlanItem{Path: d.BackupPath, Kind: "config", Label: "compose directory (compose files, .env, other files)", Selected: true})
+	}
+	for _, f := range app.Deployment {
+		switch {
+		case f.BackupPath == "":
+			p.Skipped = append(p.Skipped, "deployment definition "+f.HostPath+" is not mounted into Relyper Backup")
+		case !underAny(f.BackupPath, p.Items):
+			add(PlanItem{Path: f.BackupPath, Kind: "config", Label: "deployment definition", Selected: true})
+		}
+	}
+	// Easypanel keeps domains, Traefik routing, certificates and its own
+	// settings in the directories mounted into its container. The projects
+	// directory is left out: each app plan takes only its own project data.
+	if inv.Docker.Easypanel && isEasypanelApp(app) {
+		found := false
+		for _, d := range inv.Docker.EasypanelConfig {
+			if d.BackupPath == "" {
+				continue
+			}
+			found = true
+			for _, e := range easypanelEntries(d.BackupPath) {
+				add(PlanItem{Path: e, Kind: "easypanel", Label: "Easypanel settings (domains, Traefik, certificates, panel data)", Selected: true})
+			}
+		}
+		if !found {
+			p.Skipped = append(p.Skipped, "Easypanel settings (/etc/easypanel: domains, Traefik, certificates) are not mounted into Relyper Backup; mount /etc/easypanel read-only")
+		}
+	}
 	for _, svc := range app.Services {
 		if svc.State == "remote" {
 			p.Skipped = append(p.Skipped, svc.Name+": runs on another Swarm node")
@@ -72,26 +132,24 @@ func (s *Service) ProposeAppPlan(ctx context.Context, appID string) (*AppPlan, e
 			p.Warnings = append(p.Warnings, fmt.Sprintf("%s (%s) has no dump support; its files are backed up as files, which is not consistent while it runs", svc.Name, svc.UnsupportedDatabase))
 		}
 		for _, d := range svc.Data {
+			name := d.Name
+			if name == "" {
+				name = d.HostPath
+			}
+			label := fmt.Sprintf("%s %s → %s", d.Type, name, d.ContainerPath)
 			switch {
+			case d.Type == "tmpfs":
+				continue // in memory only
 			case d.DatabaseFiles:
-				continue
-			case !discovery.Backed(d.Class):
-				p.Skipped = append(p.Skipped, fmt.Sprintf("%s: %s (%s data, not needed)", svc.Name, d.ContainerPath, d.Class))
+				continue // the dump protects them
 			case d.BackupPath == "":
 				p.Skipped = append(p.Skipped, fmt.Sprintf("%s: %s is not mounted into Relyper Backup", svc.Name, d.HostPath))
-			case !seen[d.BackupPath]:
-				seen[d.BackupPath] = true
-				p.Paths = append(p.Paths, d.BackupPath)
+			case !discovery.Backed(d.Class):
+				add(PlanItem{Path: d.BackupPath, Kind: "data", Service: svc.Name, Label: label, Class: d.Class,
+					Note: d.Class + " data is usually rebuilt by the app; choose it if you need it"})
+			default:
+				add(PlanItem{Path: d.BackupPath, Kind: "data", Service: svc.Name, Label: label, Class: d.Class, Selected: true})
 			}
-		}
-	}
-	for _, f := range app.Deployment {
-		switch {
-		case f.BackupPath == "":
-			p.Skipped = append(p.Skipped, "deployment definition "+f.HostPath+" is not mounted into Relyper Backup")
-		case !seen[f.BackupPath]:
-			seen[f.BackupPath] = true
-			p.Paths = append(p.Paths, f.BackupPath)
 		}
 	}
 	if len(p.Databases) > 0 {
@@ -99,15 +157,103 @@ func (s *Service) ProposeAppPlan(ctx context.Context, appID string) (*AppPlan, e
 			return nil, errors.New("the dump directory contains characters that are not allowed")
 		}
 		p.DumpDir = dbdump.Dir(s.s.DumpDir, appID)
-		p.Paths = append([]string{p.DumpDir}, p.Paths...)
 		p.HookCommand = fmt.Sprintf("%s dump --dir '%s' '%s'", s.s.DumpCommand, s.s.DumpDir, appID)
+		p.Items = append([]PlanItem{{Path: p.DumpDir, Kind: "dumps", Label: "database dumps (made right before every backup)", Selected: true, Required: true}}, p.Items...)
 	}
-	if len(p.Paths) == 0 {
+	if len(p.Items) == 0 {
+		p.Paths = nil
 		return p, errors.New("nothing of this app can be backed up from here: mount its data into Relyper Backup first")
 	}
 	// The recovery report travels with every app snapshot.
-	p.Paths = append(p.Paths, s.InventoryDir())
+	p.Items = append(p.Items, PlanItem{Path: s.InventoryDir(), Kind: "inventory", Label: "recovery report (services, images, domains, ports, restore order)", Selected: true, Required: true})
+	p.choose(nil)
 	return p, nil
+}
+
+// choose sets Paths and Excludes from the selected items. selected nil keeps
+// the defaults; otherwise it names the chosen item paths.
+func (p *AppPlan) choose(selected []string) error {
+	if selected != nil {
+		want := map[string]bool{}
+		for _, x := range selected {
+			want[x] = true
+		}
+		known := map[string]bool{}
+		for i := range p.Items {
+			it := &p.Items[i]
+			known[it.Path] = true
+			it.Selected = it.Required || want[it.Path]
+		}
+		for _, x := range selected {
+			if !known[x] {
+				return fmt.Errorf("%s is not part of this app; choose from the proposed items", x)
+			}
+		}
+	}
+	p.Paths, p.Excludes = nil, nil
+	for _, it := range p.Items {
+		if it.Selected {
+			p.Paths = append(p.Paths, it.Path)
+		}
+	}
+	for _, it := range p.Items {
+		if !it.Selected && underAnyPath(it.Path, p.Paths) {
+			p.Excludes = append(p.Excludes, it.Path)
+		}
+	}
+	return nil
+}
+
+func underAnyPath(x string, dirs []string) bool {
+	for _, d := range dirs {
+		if x != d && strings.HasPrefix(x, strings.TrimSuffix(d, "/")+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func underAny(x string, items []PlanItem) bool {
+	for _, it := range items {
+		if x == it.Path || strings.HasPrefix(x, strings.TrimSuffix(it.Path, "/")+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func isEasypanelApp(app *discovery.App) bool {
+	if app.Kind == discovery.KindEasypanel {
+		return true
+	}
+	for _, d := range app.ConfigDirs {
+		if strings.HasPrefix(d.HostPath, "/etc/easypanel/projects/") {
+			return true
+		}
+	}
+	for _, d := range app.Deployment {
+		if strings.HasPrefix(d.HostPath, "/etc/easypanel/projects/") {
+			return true
+		}
+	}
+	return false
+}
+
+// easypanelEntries lists the entries of an Easypanel directory without the
+// projects directory (app data is in the app plans).
+func easypanelEntries(dir string) []string {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range ents {
+		if e.Name() == "projects" {
+			continue
+		}
+		out = append(out, filepath.Join(dir, e.Name()))
+	}
+	return out
 }
 
 // CreateAppPlanRequest creates a plan for an app.
@@ -121,6 +267,8 @@ type CreateAppPlanRequest struct {
 	// optional.
 	Excludes    []string
 	BackupFlags []string
+	// Paths chooses among the proposed items (nil: the defaults).
+	Paths []string
 }
 
 // DefaultSchedule and DefaultRetention for app plans.
@@ -143,6 +291,9 @@ func (s *Service) CreateAppPlan(ctx context.Context, req CreateAppPlanRequest, a
 	if req.PlanID != "" {
 		p.PlanID = req.PlanID
 	}
+	if err := p.choose(req.Paths); err != nil {
+		return nil, err
+	}
 	if !planIDRe.MatchString(p.PlanID) {
 		return nil, fmt.Errorf("invalid plan ID %q", p.PlanID)
 	}
@@ -161,7 +312,7 @@ func (s *Service) CreateAppPlan(ctx context.Context, req CreateAppPlanRequest, a
 			return nil, fmt.Errorf("writing the recovery inventory: %w", err)
 		}
 	}
-	plan := &v1.Plan{Id: p.PlanID, Repo: req.RepoID, Paths: p.Paths, Schedule: sched, Retention: ret, Excludes: req.Excludes, BackupFlags: req.BackupFlags}
+	plan := &v1.Plan{Id: p.PlanID, Repo: req.RepoID, Paths: p.Paths, Schedule: sched, Retention: ret, Excludes: append(append([]string{}, p.Excludes...), req.Excludes...), BackupFlags: req.BackupFlags}
 	if p.HookCommand != "" {
 		if err := os.MkdirAll(p.DumpDir, 0o700); err != nil {
 			return nil, fmt.Errorf("creating the dump directory: %w", err)

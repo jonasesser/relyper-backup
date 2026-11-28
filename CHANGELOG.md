@@ -8,6 +8,12 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 
 ### Added
 
+- App plans back up the whole compose directory (with `.env`) and, for
+  Easypanel apps, Easypanel's settings (domains, Traefik, certificates);
+  the plan preview lets you choose every volume and bind mount; app
+  definitions as JSON in the recovery report. (#52)
+- Infrastructure page: summary badges filter the app list; stopped Swarm
+  services are no longer reported as running on another node. (#50, #51)
 - Health check every 5 s while the container starts, so a zero-downtime
   handover with an idle old container takes seconds. (#45)
 - Guided app restore on the Infrastructure page (stage, then a runbook in

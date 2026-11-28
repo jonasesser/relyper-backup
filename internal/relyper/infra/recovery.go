@@ -8,6 +8,7 @@ package infra
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -348,9 +349,42 @@ func (s *Service) WriteInventory(ctx context.Context) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	tmp := filepath.Join(dir, "."+InventoryReportName+".tmp")
-	if err := os.WriteFile(tmp, []byte(rep), 0o600); err != nil {
+	// Machine-readable definition of every app: services, images, ports,
+	// domains, mounts, resources, restart policies, networks (no
+	// environment values, no secrets). It holds what Easypanel or compose
+	// configured, for recreating the services elsewhere.
+	if inv := s.Inventory(ctx, false); inv != nil && inv.Docker.Available {
+		appsDir := filepath.Join(dir, "apps")
+		if err := os.MkdirAll(appsDir, 0o700); err != nil {
+			return err
+		}
+		keep := map[string]bool{}
+		for _, a := range inv.Apps {
+			b, err := json.MarshalIndent(a, "", "  ")
+			if err != nil {
+				return err
+			}
+			name := discovery.Slug(a.ID) + ".json"
+			keep[name] = true
+			if err := writeAtomic(filepath.Join(appsDir, name), b); err != nil {
+				return err
+			}
+		}
+		if ents, err := os.ReadDir(appsDir); err == nil {
+			for _, e := range ents {
+				if !keep[e.Name()] && strings.HasSuffix(e.Name(), ".json") {
+					_ = os.Remove(filepath.Join(appsDir, e.Name()))
+				}
+			}
+		}
+	}
+	return writeAtomic(filepath.Join(dir, InventoryReportName), []byte(rep))
+}
+
+func writeAtomic(name string, b []byte) error {
+	tmp := filepath.Join(filepath.Dir(name), "."+filepath.Base(name)+".tmp")
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, filepath.Join(dir, InventoryReportName))
+	return os.Rename(tmp, name)
 }

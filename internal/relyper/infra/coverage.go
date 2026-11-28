@@ -323,11 +323,37 @@ func (s *Service) Coverage(ctx context.Context) (*CoverageReport, error) {
 				ac.Items = append(ac.Items, item)
 			}
 		}
+		// The compose directory (compose files, .env, …) replaces the single
+		// compose files inside it.
+		type cfgFile struct {
+			f   discovery.DeploymentFile
+			dir bool
+		}
+		var cfgFiles []cfgFile
+		for _, d := range app.ConfigDirs {
+			cfgFiles = append(cfgFiles, cfgFile{d, true})
+		}
 		for _, f := range app.Deployment {
+			inside := false
+			for _, d := range app.ConfigDirs {
+				if strings.HasPrefix(f.HostPath, strings.TrimSuffix(d.HostPath, "/")+"/") {
+					inside = true
+				}
+			}
+			if !inside {
+				cfgFiles = append(cfgFiles, cfgFile{f, false})
+			}
+		}
+		for _, cf := range cfgFiles {
+			f := cf.f
 			item := CoverageItem{Kind: "deployment", Name: f.HostPath, Path: f.BackupPath, Class: "deployment"}
+			what := "the deployment definition"
+			if cf.dir {
+				item.Kind, what = "compose_directory", "the compose directory (compose files, .env)"
+			}
 			if f.BackupPath == "" {
 				item.State = StateNotReachable
-				item.Detail = "mount " + f.HostPath + " into Relyper Backup (read-only) to back up the deployment definition"
+				item.Detail = "mount " + f.HostPath + " into Relyper Backup (read-only) to back up " + what
 			} else {
 				var covering []*v1.Plan
 				for _, p := range cfg.Plans {

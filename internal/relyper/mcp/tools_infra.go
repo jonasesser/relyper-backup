@@ -29,6 +29,7 @@ type CreateAppPlanIn struct {
 	PlanID    string     `json:"plan_id,omitempty" jsonschema:"default: app-<name>"`
 	Schedule  *Schedule  `json:"schedule,omitempty" jsonschema:"default: daily at 02:30 local time"`
 	Retention *Retention `json:"retention,omitempty" jsonschema:"default: 7 daily, 4 weekly, 6 monthly"`
+	Paths     []string   `json:"paths,omitempty" jsonschema:"item paths from propose_app_backup_plan to back up; default: the items selected there. Required items are always included."`
 }
 
 type ProposeSetupIn struct {
@@ -107,7 +108,7 @@ func registerInfraTools(r *registrar) {
 			}
 			return out, nil
 		})
-	addTool(r, read("propose_app_backup_plan", "Propose app backup plan", "Shows what create_app_backup_plan would set up for an app: paths, the dump directory, the hook that dumps the databases before each backup, and data that cannot be backed up from here. Changes nothing."),
+	addTool(r, read("propose_app_backup_plan", "Propose app backup plan", "Shows what create_app_backup_plan would set up for an app: every item it can back up (compose directory with .env, Easypanel settings, volumes and bind mounts, with a default choice; cache and temporary data are off by default), the dump directory, the hook that dumps the databases before each backup, and data that cannot be backed up from here. Changes nothing."),
 		func(ctx context.Context, c caller, in AppIn) (*infra.AppPlan, error) {
 			return inf.ProposeAppPlan(ctx, in.AppID)
 		})
@@ -115,7 +116,7 @@ func registerInfraTools(r *registrar) {
 	addTool(r, toolSpec{Name: "create_app_backup_plan", Title: "Create app backup plan", Scope: mcpauth.ScopePlansManage,
 		Description: "Creates one backup plan for an app: its volumes and bind mounts, plus consistent dumps of its databases made by a fixed hook right before each backup (a failed dump fails the backup). Live database files are not backed up as files. Run a first backup with run_backup afterwards."},
 		func(ctx context.Context, c caller, in CreateAppPlanIn) (*infra.AppPlan, error) {
-			req := infra.CreateAppPlanRequest{AppID: in.AppID, RepoID: in.RepoID, PlanID: in.PlanID}
+			req := infra.CreateAppPlanRequest{AppID: in.AppID, RepoID: in.RepoID, PlanID: in.PlanID, Paths: in.Paths}
 			if in.Schedule != nil {
 				sched, err := scheduleToProto(in.Schedule)
 				if err != nil {

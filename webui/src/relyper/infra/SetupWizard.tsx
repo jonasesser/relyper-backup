@@ -18,6 +18,7 @@ import {
 import { Button } from "../../components/ui/button";
 import { Field } from "../../components/ui/field";
 import { Checkbox } from "../../components/ui/checkbox";
+import { AddRepoLink } from "./AddRepoLink";
 import { useConfig } from "../../app/provider";
 import {
   AppCoverage,
@@ -266,7 +267,7 @@ export const SetupWizard = ({
           <Stack gap={3}>
             <Text fontWeight="medium">3. Options</Text>
             {repos.length === 0 ? (
-              <Text color="red.500">Add a repository first.</Text>
+              <AddRepoLink />
             ) : (
               <Field label="Repository" w={{ base: "100%", md: "260px" }}>
                 <NativeSelect.Root size="sm">

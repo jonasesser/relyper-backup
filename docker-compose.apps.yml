@@ -63,7 +63,7 @@ services:
       # Bind-mounted app data under /srv (see RELYPER_HOST_PATH_MAP).
       - /srv:/sources/srv:ro
       # Easypanel only: project data at its real host path, read-only.
-      # - /etc/easypanel/projects:/etc/easypanel/projects:ro
+      # - /etc/easypanel:/etc/easypanel:ro
     networks:
       - default
       - docker-api

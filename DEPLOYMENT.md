@@ -169,9 +169,10 @@ is set twice.
    - Bind mount or volume → `/restore` for restore staging.
    - Bind mount host path → `/sources/<name>` for every directory to back up.
    - Only with `docker-guard`: bind mount `/var/lib/docker/volumes` →
-     `/var/lib/docker/volumes` and `/etc/easypanel/projects` →
-     `/etc/easypanel/projects` (same path inside as on the host). These are
-     the app data that gets backed up.
+     `/var/lib/docker/volumes` and `/etc/easypanel` → `/etc/easypanel`
+     (same path inside as on the host). These are the app data, the compose
+     directories (with `.env`) and Easypanel's own settings (domains,
+     Traefik routing, certificates) that get backed up.
    - **Never** `/var/run/docker.sock` on this service.
 
    Mark the bind mounts read-only if your Easypanel version offers it. If it
@@ -268,7 +269,9 @@ It adds three things:
 3. **Bind-mounted app data**, read-only, either at the same path or mapped
    with `RELYPER_HOST_PATH_MAP` (the file maps `/srv` to `/sources/srv`).
    Data that is not mounted shows as "not reachable" on the Infrastructure
-   page. For Easypanel add `/etc/easypanel/projects:/etc/easypanel/projects:ro`.
+   page. For Easypanel add `/etc/easypanel:/etc/easypanel:ro` (app data in
+   `projects/` plus Easypanel's settings, domains, Traefik configuration and
+   certificates).
 
 Then open **Infrastructure** in the web UI (or use `discover_apps` through
 MCP), pick an app, choose a repository and create its backup plan. The plan:
@@ -276,8 +279,12 @@ MCP), pick an app, choose a repository and create its backup plan. The plan:
 - runs `relyper-dbdump` as a hook right before every backup; it dumps each
   database inside its own container with the engine's tool, so the database
   password never leaves that container; a failed dump fails the backup;
-- backs up the dump directory and the app's volumes and bind mounts, without
-  the live database files;
+- backs up the dump directory, the compose directory (compose files, `.env`,
+  other files), for Easypanel apps Easypanel's settings (everything in
+  `/etc/easypanel` except `projects/`: domains, Traefik, certificates), and
+  the app's volumes and bind mounts, without the live database files. The
+  preview lists every item with a checkbox; cache and temporary mounts are
+  off by default, the Docker socket is never included;
 - runs daily at 02:30 and keeps 7 daily, 4 weekly and 6 monthly snapshots
   (change it on the plan page).
 

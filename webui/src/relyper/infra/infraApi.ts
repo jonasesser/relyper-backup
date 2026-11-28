@@ -6,7 +6,13 @@ const tokenKey = "backrest-ui-authToken";
 
 export type DataItem = {
   service: string;
-  kind: "data" | "database" | "database_files" | "service" | "deployment";
+  kind:
+    | "data"
+    | "database"
+    | "database_files"
+    | "service"
+    | "deployment"
+    | "compose_directory";
   name: string;
   path?: string;
   state: string;
@@ -145,6 +151,19 @@ export type AppPlan = {
   databases?: string[];
   skipped?: string[];
   warnings?: string[];
+  items?: PlanItem[];
+  excludes?: string[];
+};
+
+export type PlanItem = {
+  path: string;
+  kind: "config" | "data" | "easypanel" | "dumps" | "inventory";
+  service?: string;
+  label: string;
+  class?: string;
+  selected: boolean;
+  required?: boolean;
+  note?: string;
 };
 
 export type VerifyResult = {
@@ -280,8 +299,8 @@ export const infraApi = {
       `results?app=${encodeURIComponent(app)}&plan=${encodeURIComponent(plan)}`,
     ),
   propose: (app: string) => call<AppPlan>("plan/propose", { app }),
-  createPlan: (app: string, repo: string, planId: string) =>
-    call<AppPlan>("plan/create", { app, repo, plan_id: planId }),
+  createPlan: (app: string, repo: string, planId: string, paths?: string[]) =>
+    call<AppPlan>("plan/create", { app, repo, plan_id: planId, paths }),
   stageRestore: (app: string) => call<StageResult>("restore/stage", { app }),
   recoveryGuide: (app: string, staging?: string) =>
     call<RecoveryGuide>(

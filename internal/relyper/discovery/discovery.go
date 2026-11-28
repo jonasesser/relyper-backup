@@ -50,6 +50,10 @@ type Host struct {
 	Name      string `json:"name,omitempty"`
 	Swarm     bool   `json:"swarm"`
 	Easypanel bool   `json:"easypanel"`
+	// EasypanelConfig are the host directories mounted into the Easypanel
+	// container (normally /etc/easypanel: its settings, domains, Traefik
+	// configuration and certificates, besides the projects).
+	EasypanelConfig []DeploymentFile `json:"easypanel_config,omitempty"`
 	Error     string `json:"error,omitempty"`
 	// Access is "guard" when the Relyper Docker guard sits in front of the
 	// daemon and "unrestricted" otherwise (raw socket or a generic proxy,
@@ -68,6 +72,9 @@ type App struct {
 	Services []Service `json:"services"`
 	// Deployment lists the files the app was deployed from (compose files).
 	Deployment []DeploymentFile `json:"deployment,omitempty"`
+	// ConfigDirs are the compose project directories (the compose files
+	// with .env and other files next to them).
+	ConfigDirs []DeploymentFile `json:"config_dirs,omitempty"`
 	// Notes are facts worth knowing (assumptions, data on other nodes).
 	Notes []string `json:"notes,omitempty"`
 }
@@ -259,6 +266,7 @@ func Discover(ctx context.Context, c *docker.Client, opt Options) *Inventory {
 		}
 	}
 	inv.Apps, inv.Docker.Easypanel = Build(containers, services, opt)
+	inv.Docker.EasypanelConfig = EasypanelConfig(containers, opt)
 	return inv
 }
 
@@ -347,6 +355,9 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 			if !hasDeployment(a.Deployment, f) {
 				a.Deployment = append(a.Deployment, DeploymentFile{HostPath: f, BackupPath: opt.LocalPath(f)})
 			}
+		}
+		if wd := path.Clean(c.Labels["com.docker.compose.project.working_dir"]); path.IsAbs(wd) && wd != "/" && !hasDeployment(a.ConfigDirs, wd) {
+			a.ConfigDirs = append(a.ConfigDirs, DeploymentFile{HostPath: wd, BackupPath: opt.LocalPath(wd)})
 		}
 	}
 	// Swarm services without a task on this node.
@@ -625,4 +636,25 @@ func specData(typ, source, target string, db *Database, opt Options) (Data, bool
 		return d, true
 	}
 	return Data{}, false
+}
+
+// EasypanelConfig returns the host directories bind-mounted into the
+// Easypanel container, without the Docker socket.
+func EasypanelConfig(containers []docker.ContainerSummary, opt Options) []DeploymentFile {
+	var out []DeploymentFile
+	for _, c := range containers {
+		if !isEasypanelImage(c.Image) {
+			continue
+		}
+		for _, m := range c.Mounts {
+			if m.Type != "bind" || !path.IsAbs(m.Source) || isSocket(m.Source) || strings.HasPrefix(m.Source, "/var/run/") || strings.HasPrefix(m.Source, "/run/") {
+				continue
+			}
+			src := path.Clean(m.Source)
+			if !hasDeployment(out, src) {
+				out = append(out, DeploymentFile{HostPath: src, BackupPath: opt.LocalPath(src)})
+			}
+		}
+	}
+	return out
 }

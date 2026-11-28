@@ -1,6 +1,7 @@
 // relyper: tests for the Infrastructure page.
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { create } from "@bufbuild/protobuf";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "../../test/render";
 import { ConfigSchema, RepoSchema } from "../../../gen/ts/v1/config_pb";
@@ -116,6 +117,94 @@ describe("InfraPage", () => {
     expect(await screen.findByText("Docker not reachable")).toBeInTheDocument();
     expect(screen.getByTestId("docker-hint")).toHaveTextContent(
       "No Docker guard is configured",
+    );
+  });
+
+  it("lets the user choose the plan items", async () => {
+    let sent: any = null;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (String(url).includes("plan/propose")) {
+        return Promise.resolve(
+          json({
+            app: "compose:shop",
+            plan_id: "app-shop",
+            paths: ["/code", "/v/up", "/inv"],
+            items: [
+              {
+                path: "/code",
+                kind: "config",
+                label: "compose directory",
+                selected: true,
+              },
+              {
+                path: "/v/up",
+                kind: "data",
+                service: "web",
+                label: "volume up",
+                selected: true,
+              },
+              {
+                path: "/code/tmp",
+                kind: "data",
+                service: "web",
+                label: "bind tmp",
+                class: "temporary",
+                selected: false,
+                note: "temporary data",
+              },
+              {
+                path: "/inv",
+                kind: "inventory",
+                label: "recovery report",
+                selected: true,
+                required: true,
+              },
+            ],
+          }),
+        );
+      }
+      if (String(url).includes("plan/create")) {
+        sent = JSON.parse(String(init?.body));
+        return Promise.resolve(
+          json({ app: "compose:shop", plan_id: "app-shop", paths: [] }),
+        );
+      }
+      return Promise.resolve(json(coverage([shop])));
+    });
+    renderWithProviders(<InfraPage />, {
+      config: create(ConfigSchema, {
+        repos: [create(RepoSchema, { id: "local", uri: "/repo" })],
+      }),
+    });
+    fireEvent.click(await screen.findByTestId("create-plan-toggle"));
+    const items = await screen.findByTestId("plan-items");
+    expect(items).toHaveTextContent("temporary data");
+    // untick the volume, tick the tmp bind
+    const box = (p: string) =>
+      screen
+        .getByTestId(`plan-item-${p}`)
+        .querySelector("[data-part=control]")!;
+    const user = userEvent.setup();
+    await user.click(box("/v/up"));
+    await user.click(box("/code/tmp"));
+    fireEvent.click(screen.getByTestId("create-plan-submit"));
+    await waitFor(() => expect(sent).not.toBeNull());
+    expect(sent.paths).toEqual(["/code", "/code/tmp", "/inv"]);
+  });
+
+  it("links to adding a repository when there is none", async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (String(url).includes("plan/propose")) {
+        return Promise.resolve(
+          json({ app: "compose:shop", plan_id: "p", paths: ["/a"] }),
+        );
+      }
+      return Promise.resolve(json(coverage([shop])));
+    });
+    renderWithProviders(<InfraPage />);
+    fireEvent.click(await screen.findByTestId("create-plan-toggle"));
+    expect(await screen.findByTestId("add-repo-link")).toHaveTextContent(
+      "Add a repository",
     );
   });
 

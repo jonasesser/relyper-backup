@@ -14,6 +14,7 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { Button } from "../../components/ui/button";
+import { Checkbox } from "../../components/ui/checkbox";
 import { Field } from "../../components/ui/field";
 import { SectionCard } from "../../components/common/SectionCard";
 import {
@@ -36,6 +37,7 @@ import {
 } from "./infraApi";
 import { SetupWizard } from "./SetupWizard";
 import { RecoveryPanel } from "./RecoveryPanel";
+import { AddRepoLink } from "./AddRepoLink";
 
 export const stateColor: Record<string, string> = {
   protected: "green",
@@ -197,6 +199,7 @@ const CreatePlanForm = ({
   const [repo, setRepo] = useState("");
   const [planId, setPlanId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [chosen, setChosen] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     infraApi
@@ -204,6 +207,9 @@ const CreatePlanForm = ({
       .then((p) => {
         setProposal(p);
         setPlanId(p.plan_id);
+        const c: Record<string, boolean> = {};
+        for (const it of p.items || []) c[it.path] = it.selected;
+        setChosen(c);
       })
       .catch((e) => setError(errMsg(e)));
   }, [app.app]);
@@ -224,7 +230,15 @@ const CreatePlanForm = ({
   const create = async () => {
     setBusy(true);
     try {
-      await infraApi.createPlan(app.app, repo, planId);
+      const items = proposal.items || [];
+      await infraApi.createPlan(
+        app.app,
+        repo,
+        planId,
+        items.length
+          ? items.filter((i) => i.required || chosen[i.path]).map((i) => i.path)
+          : undefined,
+      );
       alerts.success(
         `Plan ${planId} created. Run a first backup from the plan page.`,
       );
@@ -239,13 +253,51 @@ const CreatePlanForm = ({
   return (
     <Stack gap={2} fontSize="sm" data-testid="create-plan-form">
       <Text fontWeight="medium">This plan will back up:</Text>
-      <Stack gap={1}>
-        {proposal.paths.map((p) => (
-          <Code key={p} fontSize="xs" wordBreak="break-all">
-            {p}
-          </Code>
-        ))}
-      </Stack>
+      {proposal.items && proposal.items.length > 0 ? (
+        <Stack gap={2} data-testid="plan-items">
+          {proposal.items.map((it) => (
+            <Checkbox
+              key={it.path}
+              size="sm"
+              alignItems="flex-start"
+              checked={it.required || !!chosen[it.path]}
+              disabled={it.required}
+              onCheckedChange={(e) =>
+                setChosen({ ...chosen, [it.path]: !!e.checked })
+              }
+              data-testid={`plan-item-${it.path}`}
+            >
+              <Box minW="0">
+                <Text wordBreak="break-word">
+                  {it.service ? `${it.service} · ` : ""}
+                  {it.label}
+                  {it.required ? " (always)" : ""}
+                </Text>
+                <Code fontSize="xs" wordBreak="break-all">
+                  {it.path}
+                </Code>
+                {it.note && (
+                  <Text fontSize="xs" color="fg.muted">
+                    {it.note}
+                  </Text>
+                )}
+              </Box>
+            </Checkbox>
+          ))}
+          <Text fontSize="xs" color="fg.muted">
+            Unchecked items inside a checked directory are excluded. You can
+            change paths and excludes later on the plan page.
+          </Text>
+        </Stack>
+      ) : (
+        <Stack gap={1}>
+          {proposal.paths.map((p) => (
+            <Code key={p} fontSize="xs" wordBreak="break-all">
+              {p}
+            </Code>
+          ))}
+        </Stack>
+      )}
       {proposal.databases && proposal.databases.length > 0 && (
         <Text>
           Databases dumped right before every backup:{" "}
@@ -263,7 +315,7 @@ const CreatePlanForm = ({
         </Text>
       ))}
       {repos.length === 0 ? (
-        <Text color="red.500">Add a repository first.</Text>
+        <AddRepoLink />
       ) : (
         <Flex gap={3} wrap="wrap" align="flex-end">
           <Field label="Repository" w="220px">

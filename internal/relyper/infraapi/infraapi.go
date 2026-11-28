@@ -51,6 +51,8 @@ type body struct {
 	Repo   string `json:"repo"`
 	PlanID string `json:"plan_id"`
 	Plan   string `json:"plan"`
+	// Paths chooses the items of an app plan (nil: the defaults).
+	Paths []string `json:"paths"`
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +113,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		p, err := h.Infra.ProposeAppPlan(ctx, b.App)
 		respond(w, p, err)
 	case !get && route == "plan/create":
-		p, err := h.Infra.CreateAppPlan(ctx, infra.CreateAppPlanRequest{AppID: b.App, RepoID: b.Repo, PlanID: b.PlanID}, user(r))
+		p, err := h.Infra.CreateAppPlan(ctx, infra.CreateAppPlanRequest{AppID: b.App, RepoID: b.Repo, PlanID: b.PlanID, Paths: b.Paths}, user(r))
 		respond(w, p, err)
 	case !get && route == "restore/stage":
 		res, err := h.Infra.StageAppRestore(ctx, b.App, user(r))

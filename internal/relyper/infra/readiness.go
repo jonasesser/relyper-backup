@@ -317,12 +317,24 @@ func (s *Service) RecoveryReport(ctx context.Context) (string, error) {
 		w(".\n")
 		if inv.Docker.Easypanel {
 			w("- Easypanel installed (projects are recreated in Easypanel; their data under `/etc/easypanel/projects` is part of the app backups when mounted).\n")
+			ok := false
+			for _, d := range inv.Docker.EasypanelConfig {
+				if d.BackupPath != "" {
+					ok = true
+				}
+			}
+			if ok {
+				w("- Easypanel settings (domains, Traefik routing, certificates, panel data under `/etc/easypanel` without `projects`) are in every Easypanel app snapshot. Restore them to `/etc/easypanel` before Easypanel starts on the new host.\n")
+			} else {
+				w("- Easypanel settings (`/etc/easypanel`: domains, Traefik, certificates) are **not** backed up: mount `/etc/easypanel` read-only into Relyper Backup.\n")
+			}
 		}
 	}
 	w("- restic (any recent version) to read the repositories; rsync to copy restored data back.\n")
 	w("- The host paths listed for each app must exist again (bind mounts) or the named volumes must be recreated before data is copied in.\n\n")
 	w("## Secrets\n\n")
-	w("Docker secrets, Swarm configs and environment variables of the containers are not exported by Docker and are only in the backup if they are in the deployment definitions listed above. ")
+	w("Each app's definition (services, images, ports, domains, mounts, resources) is also stored as JSON in `_inventory/apps/` next to this report, without environment values. ")
+	w("Docker secrets, Swarm configs and environment variables of the containers are not exported by Docker and are only in the backup if they are in the compose directory (`.env`) or the Easypanel settings. ")
 	w("Keep database passwords, API keys and the repository passwords in a password manager outside this server. Without them the backups cannot be decrypted or the apps cannot start.\n\n")
 	w("## Bootstrap without Relyper Backup\n\n")
 	w("If this server is gone, use the recovery script on any Linux machine with restic:\n\n")
