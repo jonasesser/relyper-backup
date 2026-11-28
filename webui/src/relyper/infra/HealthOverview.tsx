@@ -244,6 +244,8 @@ export const HealthOverview = () => {
       {o.docker_available && (
         <Text fontSize="sm">
           <Link to="/infra">Open Infrastructure for details per app →</Link>
+          {" · "}
+          <Link to="/infra?tab=report">Disaster recovery guide →</Link>
         </Text>
       )}
     </Stack>

@@ -8,6 +8,9 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 
 ### Added
 
+- Infrastructure tab "Disaster recovery": the recovery report rendered in
+  the UI, starting with "If the whole server is lost" (steps in order with
+  this server's plans and apps), download and print / PDF. (#62)
 - Dashboard "Needs attention" shows counts instead of every app; counts
   and tiles open the Infrastructure page with that status filter. (#61)
 - Every app card lists its configuration as backup items: the app

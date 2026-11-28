@@ -521,4 +521,24 @@ describe("InfraPage", () => {
       "group:unprotected",
     );
   });
+
+  it("opens the disaster recovery guide from the link", async () => {
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes("report")
+          ? new Response(
+              "# Disaster recovery report\n\n## If the whole server is lost\n\n1. **New server**",
+              { status: 200 },
+            )
+          : json(coverage([shop])),
+      ),
+    );
+    renderWithProviders(<InfraPage />, { route: "/?tab=report" });
+    expect(
+      await screen.findByRole("heading", {
+        name: "If the whole server is lost",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("report-download")).toBeInTheDocument();
+  });
 });

@@ -12,6 +12,7 @@ import (
 	v1 "github.com/garethgeorge/backrest/gen/go/v1"
 	"github.com/garethgeorge/backrest/internal/oplog"
 	"github.com/garethgeorge/backrest/internal/relyper/dbdump"
+	"github.com/garethgeorge/backrest/internal/relyper/discovery"
 )
 
 // Readiness levels.
@@ -232,6 +233,8 @@ func (s *Service) RecoveryReport(ctx context.Context) (string, error) {
 	w("Generated %s by Relyper Backup (instance `%s`). Overall readiness: **%s**.\n\n", rd.GeneratedAt, cfg.Instance, rd.Level)
 	w("This report contains no passwords. To restore you need, in addition: the repository passwords and storage credentials (keep them in a password manager, not only in Relyper Backup), and for SFTP the private key.\n\n")
 
+	writeLostServerSteps(w, rd, inv)
+
 	w("## Repositories\n\n| Repository | Location | Type | Off-site | Last check |\n|---|---|---|---|---|\n")
 	for _, r := range rd.Repos {
 		check := r.LastCheck
@@ -380,4 +383,71 @@ func (s *Service) storageNow(r *v1.Repo, now time.Time) *StorageInfo {
 		}
 	}
 	return nil
+}
+
+// writeLostServerSteps writes the steps to rebuild this server from the
+// backups, with this server's plans and apps filled in.
+func writeLostServerSteps(w func(string, ...any), rd *ReadinessReport, inv *discovery.Inventory) {
+	w("## If the whole server is lost\n\n")
+	w("Relyper Backup is lost together with the server, so keep this report (printed or as a file) next to the repository passwords. Everything below needs only restic and the script `relyper-recover.sh`.\n\n")
+	if rd.Coverage == nil {
+		w("The app inventory is missing (Docker was not reachable); see the restore runbook below.\n\n")
+		return
+	}
+	plan := func(ac AppCoverage) string {
+		if len(ac.Plans) == 0 {
+			return "**no plan – this app cannot be restored**"
+		}
+		return "plan `" + strings.Join(ac.Plans, "`, `") + "`"
+	}
+	var panel *AppCoverage
+	var dbApps, otherApps []AppCoverage
+	for i, ac := range rd.Coverage.Apps {
+		switch {
+		case ac.Kind == discovery.KindGroup:
+		case ac.App == discovery.EasypanelSystemID:
+			panel = &rd.Coverage.Apps[i]
+		case len(ac.Databases) > 0:
+			dbApps = append(dbApps, ac)
+		default:
+			otherApps = append(otherApps, ac)
+		}
+	}
+	n := 1
+	step := func(format string, a ...any) {
+		w("%d. ", n)
+		w(format, a...)
+		w("\n")
+		n++
+	}
+	step("**New server** with the same CPU architecture and Docker%s. Point nothing at it yet.", map[bool]string{true: " (Swarm mode, as before)", false: ""}[inv.Docker.Swarm])
+	if inv.Docker.Easypanel {
+		step("**Install Easypanel** as usual (`curl -sSL https://get.easypanel.io | sh`), then stop it while you restore: `docker service scale easypanel=0`.")
+	}
+	step("**Get the tools**: install restic, download `relyper-recover.sh` (see \"Bootstrap without Relyper Backup\"), set `RESTIC_REPOSITORY`, `RESTIC_PASSWORD` and the storage variables of a repository listed below, then `sh relyper-recover.sh plans`.")
+	if panel != nil {
+		step("**Easypanel settings** (environment variables, domains, ports, Traefik, certificates) from %s: restore into an empty directory and copy `etc/easypanel/` over `/etc/easypanel/` (not `projects/`).", plan(*panel))
+	}
+	list := func(apps []AppCoverage) {
+		for _, ac := range apps {
+			w("   - %s (`%s`): %s\n", ac.Name, ac.App, plan(ac))
+		}
+	}
+	if len(dbApps) > 0 {
+		step("**Apps with databases first**: restore each into its own empty directory (`sh relyper-recover.sh restore <plan> /restore/<name>`) and copy its folders and volumes back to the same host paths (create named volumes first with `docker volume create <name>`):")
+		list(dbApps)
+	}
+	if len(otherApps) > 0 {
+		step("**Then the other apps**, the same way:")
+		list(otherApps)
+	}
+	if inv.Docker.Easypanel {
+		step("**Start Easypanel** (`docker service scale easypanel=1`) and deploy the services from the panel, databases first.")
+	} else {
+		step("**Start the apps** from their compose files or definitions (in `_inventory/apps/`), databases first.")
+	}
+	step("**Load the database dumps** with `sh restore-databases.sh` from each restored app snapshot (it checks checksums and asks before replacing a database). SQLite databases come back with their volume.")
+	step("**DNS**: point the domains at the new server.")
+	step("**Relyper Backup** last: deploy it, restore `/config` (its own plan or your offline copy) and check the Infrastructure page.")
+	w("\nThis order has not yet been rehearsed on a real server for every setup; rehearse it on a spare server.\n\n")
 }

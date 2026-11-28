@@ -39,6 +39,7 @@ import { useLocation } from "react-router";
 import { SetupWizard } from "./SetupWizard";
 import { RecoveryPanel } from "./RecoveryPanel";
 import { AddRepoLink } from "./AddRepoLink";
+import { Markdown } from "./Markdown";
 
 export const stateColor: Record<string, string> = {
   protected: "green",
@@ -1013,7 +1014,8 @@ const ReadinessSection = ({ rd }: { rd: ReadinessReport | null }) => {
 const ReportSection = () => {
   const [md, setMd] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const load = async () => {
+  const view = React.useRef<HTMLDivElement>(null);
+  const load = useCallback(async () => {
     setBusy(true);
     try {
       setMd(await infraApi.report());
@@ -1022,7 +1024,10 @@ const ReportSection = () => {
     } finally {
       setBusy(false);
     }
-  };
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
   const download = () => {
     if (!md) return;
     const blob = new Blob([md], { type: "text/markdown" });
@@ -1032,40 +1037,67 @@ const ReportSection = () => {
     a.click();
     URL.revokeObjectURL(a.href);
   };
+  // Print (or save as PDF) the rendered guide in a window of its own.
+  const print = () => {
+    const w = window.open("", "_blank");
+    if (!w || !view.current) return;
+    w.document.title = "Relyper Backup – disaster recovery";
+    const style = w.document.createElement("style");
+    style.textContent =
+      "body{font:12px/1.45 system-ui,sans-serif;margin:24px;color:#000}" +
+      "table{border-collapse:collapse;margin:6px 0}td,th{border:1px solid #999;padding:2px 5px;text-align:left;vertical-align:top}" +
+      "code,pre{font-family:ui-monospace,monospace;font-size:11px}pre{white-space:pre-wrap;background:#f3f3f3;padding:6px}";
+    w.document.head.appendChild(style);
+    w.document.body.innerHTML = view.current.innerHTML;
+    w.focus();
+    w.print();
+  };
   return (
     <SectionCard
-      title="Disaster recovery report"
-      description="Repositories, apps, protection state, test results and a restore runbook for the plain restic CLI. Contains no passwords – store it outside this server."
+      title="Disaster recovery"
+      description="How to get everything back when this server is lost – with your repositories, plans and apps filled in. Relyper Backup is gone together with the server, so download or print this guide now and keep it next to the repository passwords. It contains no passwords."
     >
       <Stack gap={3}>
         <Flex gap={2} wrap="wrap">
           <Button
             size="sm"
+            variant="outline"
             loading={busy}
             onClick={load}
             data-testid="report-load"
           >
-            {md ? "Refresh" : "Create report"}
+            Refresh
           </Button>
           {md && (
-            <Button size="sm" variant="outline" onClick={download}>
-              Download .md
-            </Button>
+            <>
+              <Button
+                size="sm"
+                onClick={download}
+                data-testid="report-download"
+              >
+                Download (.md)
+              </Button>
+              <Button size="sm" variant="outline" onClick={print}>
+                Print / save as PDF
+              </Button>
+            </>
           )}
         </Flex>
+        <Text fontSize="xs" color="fg.muted">
+          Single files or one app: use Restore… on the app card, or the
+          snapshots of a repository. Without Relyper Backup the guide below
+          works with the plain restic CLI.
+        </Text>
         {md && (
-          <Code
-            as="pre"
-            fontSize="xs"
-            p={3}
-            whiteSpace="pre-wrap"
-            wordBreak="break-word"
-            maxH="480px"
-            overflowY="auto"
+          <Box
+            ref={view}
+            borderWidth="1px"
+            rounded="md"
+            p={{ base: 2, md: 4 }}
             data-testid="report-text"
           >
-            {md}
-          </Code>
+            <Markdown text={md} />
+          </Box>
         )}
       </Stack>
     </SectionCard>
@@ -1141,7 +1173,9 @@ export const InfraPage = () => {
   });
   const [rd, setRd] = useState<ReadinessReport | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState("apps");
+  const [tab, setTab] = useState(
+    new URLSearchParams(location.search).get("tab") || "apps",
+  );
   const [loading, setLoading] = useState(false);
 
   const reload = useCallback(async (refresh = false) => {
@@ -1345,7 +1379,7 @@ export const InfraPage = () => {
             <TabsTrigger value="setup">Set up backups</TabsTrigger>
           )}
           <TabsTrigger value="readiness">Readiness</TabsTrigger>
-          <TabsTrigger value="report">Recovery report</TabsTrigger>
+          <TabsTrigger value="report">Disaster recovery</TabsTrigger>
         </TabsList>
         <TabsContent value="apps">
           <Stack gap={4}>
@@ -1473,7 +1507,7 @@ export const InfraPage = () => {
           <ReadinessSection rd={rd} />
         </TabsContent>
         <TabsContent value="report">
-          <ReportSection />
+          {tab === "report" && <ReportSection />}
         </TabsContent>
       </TabsRoot>
     </Box>
