@@ -33,6 +33,10 @@ type engine struct {
 	// restoreBeforeStart: the dump file is copied before the container
 	// starts (Redis loads dump.rdb at startup).
 	restoreBeforeStart string
+	// importStdin loads the dump from stdin into a running container of the
+	// same image (used by the restore script written next to the dumps).
+	// Empty for engines restored by copying a file (Redis).
+	importStdin string
 }
 
 // readSecret expands VAR or VAR_FILE inside the container.
@@ -50,11 +54,12 @@ const pgUser = `__u="${POSTGRES_USER:-}"; [ -z "$__u" ] && [ -n "${POSTGRES_USER
 
 var engines = map[string]engine{
 	discovery.EnginePostgres: {
-		ext:     "sql",
-		dump:    readSecret("POSTGRES_PASSWORD") + pgUser + `PGPASSWORD="$__s" exec pg_dumpall -U "$__u" -h 127.0.0.1 2>/dev/null || PGPASSWORD="$__s" exec pg_dumpall -U "$__u"`,
-		stats:   readSecret("POSTGRES_PASSWORD") + pgUser + `export PGPASSWORD="$__s"; for d in $(psql -U "$__u" -d postgres -At -c "select datname from pg_database where not datistemplate order by 1"); do printf '%s\t%s\n' "$d" "$(psql -U "$__u" -d "$d" -At -c "select count(*) from information_schema.tables where table_schema not in ('pg_catalog','information_schema')")"; done`,
-		ready:   pgUser + `pg_isready -q -h 127.0.0.1 -U "$__u"`,
-		restore: pgUser + `psql -q -U "$__u" -d postgres -f /tmp/relyper-restore/dump.sql >/tmp/relyper-restore/restore.log 2>&1; grep -E "^(psql:.*)?FATAL" /tmp/relyper-restore/restore.log && exit 1; exit 0`,
+		ext:         "sql",
+		dump:        readSecret("POSTGRES_PASSWORD") + pgUser + `PGPASSWORD="$__s" exec pg_dumpall -U "$__u" -h 127.0.0.1 2>/dev/null || PGPASSWORD="$__s" exec pg_dumpall -U "$__u"`,
+		stats:       readSecret("POSTGRES_PASSWORD") + pgUser + `export PGPASSWORD="$__s"; for d in $(psql -U "$__u" -d postgres -At -c "select datname from pg_database where not datistemplate order by 1"); do printf '%s\t%s\n' "$d" "$(psql -U "$__u" -d "$d" -At -c "select count(*) from information_schema.tables where table_schema not in ('pg_catalog','information_schema')")"; done`,
+		ready:       pgUser + `pg_isready -q -h 127.0.0.1 -U "$__u"`,
+		restore:     pgUser + `psql -q -U "$__u" -d postgres -f /tmp/relyper-restore/dump.sql >/tmp/relyper-restore/restore.log 2>&1; grep -E "^(psql:.*)?FATAL" /tmp/relyper-restore/restore.log && exit 1; exit 0`,
+		importStdin: readSecret("POSTGRES_PASSWORD") + pgUser + `PGPASSWORD="$__s" psql -q -U "$__u" -d postgres`,
 		verifyEnv: func(pw, user string) []string {
 			env := []string{"POSTGRES_PASSWORD=" + pw}
 			if user != "" {
@@ -74,11 +79,12 @@ var engines = map[string]engine{
 		verifyEnv:          func(string, string) []string { return nil },
 	},
 	discovery.EngineMongo: {
-		ext:     "archive.gz",
-		dump:    readSecret("MONGO_INITDB_ROOT_PASSWORD") + `__u="${MONGO_INITDB_ROOT_USERNAME:-}"; if [ -n "$__u" ]; then exec mongodump --quiet --archive --gzip --username "$__u" --password "$__s" --authenticationDatabase admin; else exec mongodump --quiet --archive --gzip; fi`,
-		stats:   readSecret("MONGO_INITDB_ROOT_PASSWORD") + `__u="${MONGO_INITDB_ROOT_USERNAME:-}"; a=""; [ -n "$__u" ] && a="--username $__u --password $__s --authenticationDatabase admin"; mongosh --quiet $a --eval 'db.adminCommand({listDatabases:1}).databases.forEach(function(d){ if(["admin","config","local"].indexOf(d.name)<0){ print(d.name+"\t"+db.getSiblingDB(d.name).getCollectionNames().length) } })'`,
-		ready:   `mongosh --quiet --eval 'db.runCommand({ping:1}).ok' | grep -q 1`,
-		restore: `mongorestore --quiet --archive=/tmp/relyper-restore/dump.archive.gz --gzip --drop`,
+		ext:         "archive.gz",
+		dump:        readSecret("MONGO_INITDB_ROOT_PASSWORD") + `__u="${MONGO_INITDB_ROOT_USERNAME:-}"; if [ -n "$__u" ]; then exec mongodump --quiet --archive --gzip --username "$__u" --password "$__s" --authenticationDatabase admin; else exec mongodump --quiet --archive --gzip; fi`,
+		stats:       readSecret("MONGO_INITDB_ROOT_PASSWORD") + `__u="${MONGO_INITDB_ROOT_USERNAME:-}"; a=""; [ -n "$__u" ] && a="--username $__u --password $__s --authenticationDatabase admin"; mongosh --quiet $a --eval 'db.adminCommand({listDatabases:1}).databases.forEach(function(d){ if(["admin","config","local"].indexOf(d.name)<0){ print(d.name+"\t"+db.getSiblingDB(d.name).getCollectionNames().length) } })'`,
+		ready:       `mongosh --quiet --eval 'db.runCommand({ping:1}).ok' | grep -q 1`,
+		restore:     `mongorestore --quiet --archive=/tmp/relyper-restore/dump.archive.gz --gzip --drop`,
+		importStdin: readSecret("MONGO_INITDB_ROOT_PASSWORD") + `__u="${MONGO_INITDB_ROOT_USERNAME:-}"; if [ -n "$__u" ]; then exec mongorestore --quiet --archive --gzip --drop --username "$__u" --password "$__s" --authenticationDatabase admin; else exec mongorestore --quiet --archive --gzip --drop; fi`,
 		verifyEnv: func(string, string) []string {
 			return nil
 		},
@@ -90,11 +96,12 @@ func mysqlEngine() engine {
 	user := `__mu=root; __mp="$__s"; if [ -z "$__mp" ]; then __mu="${MARIADB_USER:-${MYSQL_USER:-root}}"; __mp="${MARIADB_PASSWORD:-${MYSQL_PASSWORD:-}}"; fi; `
 	tool := `__d=$(command -v mariadb-dump || command -v mysqldump); __c=$(command -v mariadb || command -v mysql); `
 	return engine{
-		ext:     "sql",
-		dump:    pw + user + tool + `__db="${MARIADB_DATABASE:-${MYSQL_DATABASE:-}}"; if [ "$__mu" = root ]; then MYSQL_PWD="$__mp" exec "$__d" -u root --all-databases --single-transaction --routines --events --triggers --hex-blob; else MYSQL_PWD="$__mp" exec "$__d" -u "$__mu" --databases "$__db" --single-transaction --routines --triggers --hex-blob --no-tablespaces; fi`,
-		stats:   pw + user + tool + `MYSQL_PWD="$__mp" "$__c" -u "$__mu" -N -B -e "select s.schema_name, count(t.table_name) from information_schema.schemata s left join information_schema.tables t on t.table_schema=s.schema_name where s.schema_name not in ('mysql','information_schema','performance_schema','sys') group by s.schema_name order by 1"`,
-		ready:   pw + tool + `MYSQL_PWD="$__s" "$__c" -u root --protocol=tcp -h 127.0.0.1 -N -B -e "select 1" >/dev/null 2>&1`,
-		restore: pw + tool + `MYSQL_PWD="$__s" "$__c" -u root --protocol=tcp -h 127.0.0.1 < /tmp/relyper-restore/dump.sql`,
+		ext:         "sql",
+		dump:        pw + user + tool + `__db="${MARIADB_DATABASE:-${MYSQL_DATABASE:-}}"; if [ "$__mu" = root ]; then MYSQL_PWD="$__mp" exec "$__d" -u root --all-databases --single-transaction --routines --events --triggers --hex-blob; else MYSQL_PWD="$__mp" exec "$__d" -u "$__mu" --databases "$__db" --single-transaction --routines --triggers --hex-blob --no-tablespaces; fi`,
+		stats:       pw + user + tool + `MYSQL_PWD="$__mp" "$__c" -u "$__mu" -N -B -e "select s.schema_name, count(t.table_name) from information_schema.schemata s left join information_schema.tables t on t.table_schema=s.schema_name where s.schema_name not in ('mysql','information_schema','performance_schema','sys') group by s.schema_name order by 1"`,
+		ready:       pw + tool + `MYSQL_PWD="$__s" "$__c" -u root --protocol=tcp -h 127.0.0.1 -N -B -e "select 1" >/dev/null 2>&1`,
+		restore:     pw + tool + `MYSQL_PWD="$__s" "$__c" -u root --protocol=tcp -h 127.0.0.1 < /tmp/relyper-restore/dump.sql`,
+		importStdin: pw + user + tool + `MYSQL_PWD="$__mp" exec "$__c" -u "$__mu"`,
 		verifyEnv: func(pw, _ string) []string {
 			return []string{"MARIADB_ROOT_PASSWORD=" + pw, "MYSQL_ROOT_PASSWORD=" + pw}
 		},

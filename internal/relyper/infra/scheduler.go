@@ -43,6 +43,9 @@ func (s *Service) tick(ctx context.Context) {
 		return
 	}
 	now := time.Now()
+	if err := s.WriteInventory(ctx); err != nil {
+		zap.S().Warnw("writing the recovery inventory", "error", err)
+	}
 	s.checkStorage(ctx, cfg, now)
 	if len(s.s.NotifyURLs) > 0 {
 		s.checkOverduePlans(cfg, now)

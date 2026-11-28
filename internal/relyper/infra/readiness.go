@@ -270,15 +270,24 @@ func (s *Service) RecoveryReport(ctx context.Context) (string, error) {
 	for _, ac := range rd.Coverage.Apps {
 		w("### %s (`%s`) – %s\n\n", ac.Name, ac.App, levels[ac.App])
 		if app := inv.Find(ac.App); app != nil {
-			w("| Service | Image | Database |\n|---|---|---|\n")
+			w("| Service | Image | Database | Networks | Ports | Domains | Restart | Depends on |\n|---|---|---|---|---|---|---|---|\n")
 			for _, svc := range app.Services {
 				db := ""
 				if svc.Database != nil {
 					db = svc.Database.Engine
+				} else if svc.UnsupportedDatabase != "" {
+					db = svc.UnsupportedDatabase + " (no dump)"
 				}
-				w("| %s | `%s` | %s |\n", svc.Name, svc.Image, db)
+				w("| %s | `%s` | %s | %s | %s | %s | %s | %s |\n", svc.Name, svc.Image, db, strings.Join(svc.Networks, ", "),
+					strings.Join(svc.Ports, ", "), strings.Join(svc.Domains, ", "), svc.RestartPolicy, strings.Join(svc.DependsOn, ", "))
 			}
-			w("\n")
+			w("\nRestore order (start): %s.\n\n", strings.Join(RestoreOrder(app), " → "))
+			for _, f := range app.Deployment {
+				w("- Deployment definition: `%s`\n", f.HostPath)
+			}
+			if len(app.Deployment) > 0 {
+				w("\n")
+			}
 		}
 		w("| Item | Path | State | Plan | Last snapshot |\n|---|---|---|---|---|\n")
 		for _, it := range ac.Items {
@@ -298,6 +307,32 @@ func (s *Service) RecoveryReport(ctx context.Context) (string, error) {
 		}
 		w("\n")
 	}
+
+	w("## Host prerequisites\n\n")
+	if inv.Docker.Available {
+		w("- Docker %s or newer", inv.Docker.Version)
+		if inv.Docker.Swarm {
+			w(", Swarm mode initialized")
+		}
+		w(".\n")
+		if inv.Docker.Easypanel {
+			w("- Easypanel installed (projects are recreated in Easypanel; their data under `/etc/easypanel/projects` is part of the app backups when mounted).\n")
+		}
+	}
+	w("- restic (any recent version) to read the repositories; rsync to copy restored data back.\n")
+	w("- The host paths listed for each app must exist again (bind mounts) or the named volumes must be recreated before data is copied in.\n\n")
+	w("## Secrets\n\n")
+	w("Docker secrets, Swarm configs and environment variables of the containers are not exported by Docker and are only in the backup if they are in the deployment definitions listed above. ")
+	w("Keep database passwords, API keys and the repository passwords in a password manager outside this server. Without them the backups cannot be decrypted or the apps cannot start.\n\n")
+	w("## Bootstrap without Relyper Backup\n\n")
+	w("If this server is gone, use the recovery script on any Linux machine with restic:\n\n")
+	w("```sh\ncurl -fsSLO https://raw.githubusercontent.com/jonasesser/relyper-backup/main/scripts/relyper-recover.sh\n")
+	w("export RESTIC_REPOSITORY=<location> RESTIC_PASSWORD=<password>   # plus storage variables\n")
+	w("sh relyper-recover.sh plans                 # plans and their latest snapshots\n")
+	w("sh relyper-recover.sh report                # this report, from the latest snapshot\n")
+	w("sh relyper-recover.sh restore <plan> /restore/<name>\n```\n\n")
+	w("Every app snapshot with databases contains `%s` and `%s` next to the dumps; the script points to them after a restore. ", dbdump.RestoreNotesName, dbdump.RestoreScriptName)
+	w("To move to another Docker host: install Docker (and Easypanel), restore each app into a staging directory, recreate the services from the deployment definitions with the images listed above, copy the data to the same host paths, then load the databases and start the services in the restore order.\n\n")
 
 	w("## Restore runbook\n\n")
 	w("Everything below works with the plain restic CLI, without Relyper Backup.\n\n")

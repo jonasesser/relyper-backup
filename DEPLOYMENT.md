@@ -119,6 +119,7 @@ configurations and documentation keep working.
 | `RELYPER_DOCKER_TOKEN` | unset | Token sent to the Relyper Docker guard (same value as `RELYPER_GUARD_TOKEN` there). Secret; never shown or logged. |
 | `RELYPER_HOST_PATH_MAP` | unset | Host paths mounted elsewhere in the container, e.g. `/srv=/sources/srv,/opt/data=/sources/opt`. |
 | `RELYPER_DUMP_DIR` | `<data>/relyper/dumps` | Where database dumps are written before the backup. |
+| `RELYPER_RESTORE_DIR` | `/restore` if mounted, else `<data>/relyper/restore` | Where the guided app restore (Infrastructure → Restore…) stages data. Mount it writable; never point it at production data. |
 | `RELYPER_COVERAGE_MAX_AGE_HOURS` | `48` | A snapshot older than this counts as stale. |
 | `RELYPER_VERIFY_INTERVAL_DAYS` | `7` | Automatic database and file restore tests; `0` turns them off. |
 | `RELYPER_NOTIFY_URLS` | unset | Notification targets as [shoutrrr URLs](https://shoutrrr.nickfedor.com/), separated by spaces. |

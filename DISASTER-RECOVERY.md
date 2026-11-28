@@ -63,6 +63,37 @@ This was verified during development: a backup made by the Relyper Backup
 image to an OpenSSH SFTP server was restored with the plain restic CLI and was
 byte-identical to the source (#13).
 
+### Recovery bootstrap script
+
+`scripts/relyper-recover.sh` (in the image as `relyper-recover`) wraps the
+plain restic CLI for this case. It needs only restic and a POSIX shell:
+
+```bash
+export RESTIC_REPOSITORY=sftp:user@host:/backups/relyper
+export RESTIC_PASSWORD=...                 # or RESTIC_PASSWORD_FILE
+sh relyper-recover.sh plans                # plans and their latest snapshots
+sh relyper-recover.sh report               # recovery report from the newest snapshot
+sh relyper-recover.sh restore <plan> /srv/restore [snapshot]
+```
+
+A restore only goes into an empty directory. The script then points to the
+database restore notes and script found in the restored data.
+
+### Every app snapshot explains itself
+
+Next to the database dumps of an app, each snapshot contains:
+
+- `RESTORE.md`: images, files, checksums and the expected content (tables,
+  rows, keys) of each dump, plus manual commands per engine.
+- `restore-databases.sh`: loads every dump into a running container of the
+  same image (`sh restore-databases.sh [--yes] [service=container ...]`).
+  It checks the checksum first and asks before replacing each database.
+- `_inventory/recovery-report.md`: services, images, host paths, restore
+  order and network dependencies of the app.
+
+So a plain `restic restore` is enough to bring an app back without Relyper
+Backup.
+
 ## Scenario 3: rebuild Relyper Backup on a new host
 
 1. Deploy the image as described in `DEPLOYMENT.md`.
@@ -75,6 +106,22 @@ byte-identical to the source (#13).
    old plan history (restic records the hostname).
 4. Operation history (`/data`) is not needed; snapshots are read from the
    repository again ("Index snapshots").
+
+## Scenario 4: guided restore of an app (Infrastructure page)
+
+On the Infrastructure page, an app with a plan has **Restore…**:
+
+1. **Stage**: restores the latest snapshot of the app's plan into a new
+   directory below `RELYPER_RESTORE_DIR` (default `/restore`), never on top
+   of live data. Read-only users cannot start it.
+2. **Runbook**: shows the exact commands for the Docker host in the right
+   order: stop the app, copy the staged data back to its host paths, start
+   the databases first, load the dumps with `restore-databases.sh`, then
+   start the other services after the services they depend on.
+
+Replacing production data stays a manual step on the Docker host: it needs
+the app stopped and a person who checked the staged data. The MCP tool
+`get_app_recovery_guide` returns the same runbook.
 
 ## Databases
 

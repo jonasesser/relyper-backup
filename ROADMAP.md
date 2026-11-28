@@ -83,7 +83,7 @@ Details: `MCP.md`.
 | Recovery readiness | done | #21 – per app: coverage, database test, file test, repository check, off-site copy |
 | Recovery report / runbook | done | #21 – Markdown, no passwords; restore commands for the plain restic CLI |
 | Notifications on problems | done | #21 – shoutrrr URLs (`RELYPER_NOTIFY_URLS`) |
-| Guided production restore of an app | open | Production restore stays a manual, documented step |
+| Guided production restore of an app | done | #43 – stage the latest snapshot into a new directory, then a runbook with the exact commands in restore order; replacing production data stays a manual step on the host |
 
 ## Phase 6 – Product refinement (partial)
 
@@ -137,6 +137,6 @@ What `docs/CONCEPT.md` asks for and is not (fully) built yet, by section:
 | 10 Repositories | No guided repository wizard beyond the upstream form and the SFTP diagnostics; Google Drive / Dropbox only via rclone; Host Europe not tested. |
 | 11 Setup wizard | Wizard for the whole Docker environment, all Easypanel projects or selected apps with measured data size and shared options (#34). Granularity is the app (compose project, stack, Easypanel project); single services, directories or databases use the normal plan form. No CPU/RAM impact estimate (not measurable reliably). |
 | 12 Dashboard | Health summary (#28) and notifications for success, failure, low storage, overdue plans (#27). |
-| 13 Disaster recovery | Recovery report with images, paths, test results and restic commands; no guided restore workflows, restoration order, network dependencies or bootstrap tool. |
+| 13 Disaster recovery | Guided app restore (staging + runbook in restore order), network dependencies in the report, self-explaining snapshots (`RESTORE.md`, `restore-databases.sh`) and the bootstrap script `relyper-recover` (#43). The final copy into production is not automated on purpose. |
 | 15 Security | Two roles for Relyper Identity users (read-only and full, #32); no finer permissions. Secrets in `config.json` are not encrypted (upstream). |
 | 17 Deployment | No Easypanel template yet; MCP endpoint path is fixed at `/mcp`. |

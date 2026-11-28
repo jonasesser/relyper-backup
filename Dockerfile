@@ -74,6 +74,7 @@ COPY --from=server /out/backrest /backrest
 COPY --from=server /out/docker-entrypoint /docker-entrypoint
 COPY --from=server /out/relyper-healthcheck /usr/local/bin/relyper-healthcheck
 COPY --from=server /out/relyper-dbdump /usr/local/bin/relyper-dbdump
+COPY scripts/relyper-recover.sh /usr/local/bin/relyper-recover
 
 # Defaults also applied by /docker-entrypoint when unset.
 ENV BACKREST_PORT=0.0.0.0:9898 \

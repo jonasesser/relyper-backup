@@ -113,6 +113,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case !get && route == "plan/create":
 		p, err := h.Infra.CreateAppPlan(ctx, infra.CreateAppPlanRequest{AppID: b.App, RepoID: b.Repo, PlanID: b.PlanID}, user(r))
 		respond(w, p, err)
+	case !get && route == "restore/stage":
+		res, err := h.Infra.StageAppRestore(ctx, b.App, user(r))
+		respond(w, res, err)
+	case get && route == "restore/guide":
+		g, err := h.Infra.AppRecoveryGuide(ctx, r.URL.Query().Get("app"), r.URL.Query().Get("staging"))
+		respond(w, g, err)
 	case !get && route == "setup/propose":
 		var sr infra.SetupRequest
 		if err := json.Unmarshal(raw, &sr); err != nil {

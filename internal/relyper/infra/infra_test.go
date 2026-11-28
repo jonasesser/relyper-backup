@@ -5,10 +5,12 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	v1 "github.com/garethgeorge/backrest/gen/go/v1"
+	"github.com/garethgeorge/backrest/internal/relyper/discovery"
 )
 
 func TestHookApp(t *testing.T) {
@@ -206,5 +208,20 @@ func TestSetupOptionsValidate(t *testing.T) {
 		if err := o.validate(); err == nil {
 			t.Errorf("accepted %+v", o)
 		}
+	}
+}
+
+func TestRestoreOrder(t *testing.T) {
+	app := &discovery.App{Services: []discovery.Service{
+		{Name: "web", DependsOn: []string{"api"}},
+		{Name: "api", DependsOn: []string{"db", "cache"}},
+		{Name: "cache", Database: &discovery.Database{Engine: "redis"}},
+		{Name: "db", Database: &discovery.Database{Engine: "postgres"}},
+		{Name: "worker", DependsOn: []string{"worker2"}},
+		{Name: "worker2", DependsOn: []string{"worker"}}, // cycle
+	}}
+	got := strings.Join(RestoreOrder(app), ",")
+	if got != "cache,db,api,web,worker2,worker" {
+		t.Fatalf("order %s", got)
 	}
 }

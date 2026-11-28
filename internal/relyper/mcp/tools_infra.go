@@ -133,6 +133,10 @@ func registerInfraTools(r *registrar) {
 			return inf.CreateAppPlan(ctx, req, c.actor())
 		})
 
+	addTool(r, read("get_app_recovery_guide", "Get app recovery guide", "Returns the runbook to restore an app into production: restore order (databases first, then dependencies), the commands to stop the app, copy staged data back to its host paths, load the database dumps with the restore script stored in the snapshot, and start the app again. Changes nothing; stage the data first with restore_snapshot into a new directory."),
+		func(ctx context.Context, c caller, in AppIn) (*infra.RecoveryGuide, error) {
+			return inf.AppRecoveryGuide(ctx, in.AppID, "")
+		})
 	addTool(r, read("propose_backup_setup", "Propose backup setup", "Backup setup wizard, step 1: proposes one backup plan per app for the whole Docker environment, all Easypanel projects or selected apps, with the measured size of the data to back up (a lower bound if measuring took too long), free repository storage where measured, existing plans and the default options. Changes nothing."),
 		func(ctx context.Context, c caller, in ProposeSetupIn) (*infra.SetupProposals, error) {
 			return inf.ProposeSetup(ctx, infra.SetupRequest{Scope: in.Scope, Apps: in.Apps})

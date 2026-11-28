@@ -60,6 +60,9 @@ type Settings struct {
 	LowStoragePercent int
 	// KnownHostsPath is Relyper Backup's SSH known_hosts (SFTP free space).
 	KnownHostsPath string
+	// RestoreDir is where guided restores stage data (RELYPER_RESTORE_DIR;
+	// default /restore if it exists, else <data>/relyper/restore).
+	RestoreDir string
 }
 
 // SettingsFromEnv reads RELYPER_* variables.
@@ -87,6 +90,9 @@ func SettingsFromEnv(dataDir string) Settings {
 	s.NotifySuccess, _ = strconv.ParseBool(os.Getenv("RELYPER_NOTIFY_SUCCESS"))
 	if n, err := strconv.Atoi(os.Getenv("RELYPER_LOW_STORAGE_PERCENT")); err == nil && n >= 0 && n < 100 {
 		s.LowStoragePercent = n
+	}
+	if v := os.Getenv("RELYPER_RESTORE_DIR"); v != "" && filepath.IsAbs(v) {
+		s.RestoreDir = filepath.Clean(v)
 	}
 	if v := os.Getenv("RELYPER_DUMP_COMMAND"); v != "" {
 		s.DumpCommand = v

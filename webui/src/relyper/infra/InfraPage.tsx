@@ -35,6 +35,7 @@ import {
   infraApi,
 } from "./infraApi";
 import { SetupWizard } from "./SetupWizard";
+import { RecoveryPanel } from "./RecoveryPanel";
 
 export const stateColor: Record<string, string> = {
   protected: "green",
@@ -347,6 +348,7 @@ const AppCard = ({
   reload: () => void;
 }) => {
   const [showCreate, setShowCreate] = useState(false);
+  const [showRecovery, setShowRecovery] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   // The server sends null for apps without data items.
@@ -496,6 +498,16 @@ const AppCard = ({
               Test database restore
             </Button>
           )}
+          {(hasAppPlan || plan) && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowRecovery(!showRecovery)}
+              data-testid="recovery-toggle"
+            >
+              {showRecovery ? "Hide restore" : "Restore…"}
+            </Button>
+          )}
           {plan && (
             <Button
               size="sm"
@@ -513,6 +525,7 @@ const AppCard = ({
             </Button>
           )}
         </Flex>
+        {showRecovery && <RecoveryPanel app={app.app} />}
         {showCreate && (
           <CreatePlanForm
             app={app}

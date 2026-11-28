@@ -69,7 +69,7 @@ session (JWT) is never accepted on `/mcp`.
 
 | Scope | Tools |
 |---|---|
-| `status:read` | get_system_overview, get_backup_status, list_repositories, get_repository_status, list_backup_plans, get_backup_plan, list_snapshots, get_snapshot_details, list_backup_operations, get_backup_operation, get_backup_errors, get_storage_usage, validate_backup_configuration, create_backup_recommendations, get_approval_request, discover_apps, list_docker_containers, list_docker_services, list_docker_volumes, list_easypanel_projects, list_detected_databases, get_backup_coverage, get_recovery_readiness, get_disaster_recovery_status, get_recovery_report, get_verification_results, propose_app_backup_plan, propose_backup_setup |
+| `status:read` | get_system_overview, get_backup_status, list_repositories, get_repository_status, list_backup_plans, get_backup_plan, list_snapshots, get_snapshot_details, list_backup_operations, get_backup_operation, get_backup_errors, get_storage_usage, validate_backup_configuration, create_backup_recommendations, get_approval_request, discover_apps, list_docker_containers, list_docker_services, list_docker_volumes, list_easypanel_projects, list_detected_databases, get_backup_coverage, get_recovery_readiness, get_disaster_recovery_status, get_recovery_report, get_app_recovery_guide, get_verification_results, propose_app_backup_plan, propose_backup_setup |
 | `contents:browse` | list_snapshot_files (names only, never file contents) |
 | `repos:manage` | create_repository, update_repository, test_repository_connection, create_sftp_key, scan_sftp_host_keys, test_sftp_connection, trust_sftp_host_key (approval) |
 | `plans:manage` | create_app_backup_plan, create_backup_setup, create_backup_plan, update_backup_plan, enable_backup_plan, disable_backup_plan, delete_backup_plan (approval) |
@@ -120,6 +120,9 @@ For Docker apps (needs the Docker connection from `DEPLOYMENT.md`):
    and `run_restore_test` (restores sample files and checks their sizes).
 5. `get_recovery_readiness` and `get_recovery_report` (Markdown runbook
    without passwords).
+6. `get_app_recovery_guide`: the runbook to put one app back into
+   production (restore order, copy commands, database restore script).
+   Stage the data first with `restore_snapshot` into a new directory.
 
 S3, B2, Azure, Google Cloud Storage, rest-server, Swift, rclone and local
 repositories work the same way, with credentials passed as environment
@@ -149,7 +152,8 @@ Not offered through MCP:
 
 - Restoring a database dump into a running production database: database
   restores go into throwaway test containers; restoring production is a
-  manual step described in the recovery report and `DISASTER-RECOVERY.md`.
+  manual step described in the recovery report, `get_app_recovery_guide`
+  and `DISASTER-RECOVERY.md`.
 - Shell commands, raw restic commands, hook commands, and restic flags or
   environment variables that can run programs (`--password-command`,
   `RESTIC_PASSWORD_COMMAND`, `sftp.command`, `--files-from`, …). Only listed

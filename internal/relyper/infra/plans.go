@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -102,6 +103,8 @@ func (s *Service) ProposeAppPlan(ctx context.Context, appID string) (*AppPlan, e
 	if len(p.Paths) == 0 {
 		return p, errors.New("nothing of this app can be backed up from here: mount its data into Relyper Backup first")
 	}
+	// The recovery report travels with every app snapshot.
+	p.Paths = append(p.Paths, s.InventoryDir())
 	return p, nil
 }
 
@@ -148,6 +151,13 @@ func (s *Service) CreateAppPlan(ctx context.Context, req CreateAppPlanRequest, a
 	}
 	if ret == nil {
 		ret = DefaultRetention()
+	}
+	// The inventory directory must exist before the first backup; the
+	// report in it is refreshed hourly.
+	if _, err := os.Stat(filepath.Join(s.InventoryDir(), InventoryReportName)); err != nil {
+		if err := s.WriteInventory(ctx); err != nil {
+			return nil, fmt.Errorf("writing the recovery inventory: %w", err)
+		}
 	}
 	plan := &v1.Plan{Id: p.PlanID, Repo: req.RepoID, Paths: p.Paths, Schedule: sched, Retention: ret, Excludes: req.Excludes, BackupFlags: req.BackupFlags}
 	if p.HookCommand != "" {

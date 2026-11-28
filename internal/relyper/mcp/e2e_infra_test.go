@@ -142,6 +142,21 @@ func TestE2EInfra(t *testing.T) {
 		t.Fatalf("coverage after backup: %s", toJSON(app))
 	}
 
+	// Recovery: the runbook starts the database first and uses the restore
+	// script that is stored next to the dumps (and so in the snapshot).
+	guide := toJSON(mustCall(t, s, "get_app_recovery_guide", map[string]any{"app_id": "compose:e2eshop"}))
+	if !strings.Contains(guide, `"order":["db","web"]`) || !strings.Contains(guide, "restore-databases.sh db=relyper-e2e-db") {
+		t.Fatalf("recovery guide: %s", guide)
+	}
+	for _, f := range []string{"restore-databases.sh", "RESTORE.md"} {
+		if _, err := os.Stat(filepath.Join(dirs["data"], "relyper", "dumps", "compose-e2eshop", f)); err != nil {
+			t.Fatalf("%s not written next to the dumps: %v", f, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dirs["data"], "relyper", "dumps", "_inventory", "recovery-report.md")); err != nil {
+		t.Fatalf("recovery inventory missing: %v", err)
+	}
+
 	mustCall(t, s, "verify_app_databases", map[string]any{"app_id": "compose:e2eshop"})
 	mustCall(t, s, "run_restore_test", map[string]any{"plan_id": planID})
 	var res map[string]any

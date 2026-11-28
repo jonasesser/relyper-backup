@@ -163,6 +163,39 @@ func TestDumpAndVerify(t *testing.T) {
 	if err != nil || len(left) != 0 {
 		t.Fatalf("verification containers left behind: %v %v", len(left), err)
 	}
+
+	// The restore script next to the dumps brings lost data back without
+	// Relyper Backup. Drop data in all three databases, then run it.
+	script, err := os.ReadFile(filepath.Join(dir, RestoreScriptName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{"pg-secret-123", "maria-secret-456"} {
+		if strings.Contains(string(script), secret) {
+			t.Fatal("secret in restore script")
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, RestoreNotesName)); err != nil {
+		t.Fatal(err)
+	}
+	run(t, "exec", "relyper-it-pg", "psql", "-U", "app", "-d", "shop", "-c", "drop table orders")
+	run(t, "exec", "relyper-it-maria", "mariadb", "-uroot", "-pmaria-secret-456", "crm", "-e", "drop table leads")
+	run(t, "exec", "relyper-it-redis", "redis-cli", "flushall")
+	out, err := exec.Command("sh", filepath.Join(dir, RestoreScriptName), "--yes").CombinedOutput()
+	if err != nil {
+		t.Fatalf("restore script: %v\n%s", err, out)
+	}
+	t.Logf("restore script: %s", out)
+	if n := run(t, "exec", "relyper-it-pg", "psql", "-U", "app", "-d", "shop", "-At", "-c", "select count(*) from orders"); n != "500" {
+		t.Fatalf("orders after restore: %q", n)
+	}
+	if n := run(t, "exec", "relyper-it-maria", "mariadb", "-uroot", "-pmaria-secret-456", "crm", "-N", "-B", "-e", "select count(*) from leads"); n != "2" {
+		t.Fatalf("leads after restore: %q", n)
+	}
+	waitExec(t, "relyper-it-redis", `redis-cli ping`)
+	if n := run(t, "exec", "relyper-it-redis", "redis-cli", "dbsize"); n != "50" {
+		t.Fatalf("redis keys after restore: %q", n)
+	}
 }
 
 func TestDumpAndVerifyMySQLMongo(t *testing.T) {
@@ -209,5 +242,19 @@ func TestDumpAndVerifyMySQLMongo(t *testing.T) {
 	}
 	if strings.Contains(log.String(), "secret") {
 		t.Fatal("secret in log")
+	}
+
+	// Restore script for MySQL and MongoDB.
+	run(t, "exec", "relyper-it-mysql", "mysql", "-uroot", "-pmysql-secret-789", "inventory", "-e", "drop table items")
+	run(t, "exec", "relyper-it-mongo", "mongosh", "--quiet", "-u", "root", "-p", "mongo-secret-012", "--eval", `db.getSiblingDB("app").users.drop()`)
+	out, err := exec.Command("sh", filepath.Join(Dir(base, app.ID), RestoreScriptName), "--yes").CombinedOutput()
+	if err != nil {
+		t.Fatalf("restore script: %v\n%s", err, out)
+	}
+	if n := run(t, "exec", "relyper-it-mysql", "mysql", "-uroot", "-pmysql-secret-789", "inventory", "-N", "-B", "-e", "select count(*) from items"); !strings.HasSuffix(n, "3") {
+		t.Fatalf("items after restore: %q", n)
+	}
+	if n := run(t, "exec", "relyper-it-mongo", "mongosh", "--quiet", "-u", "root", "-p", "mongo-secret-012", "--eval", `db.getSiblingDB("app").users.countDocuments()`); n != "2" {
+		t.Fatalf("users after restore: %q", n)
 	}
 }

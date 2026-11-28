@@ -246,6 +246,27 @@ export type SetupProposals = {
 
 export type SetupResult = { app: string; plan_id?: string; error?: string };
 
+export type StageResult = {
+  app: string;
+  plan: string;
+  snapshot_id: string;
+  snapshot_time: string;
+  target: string;
+  operation_ids: number[];
+  paths: string[];
+};
+
+export type GuideStep = { title: string; detail?: string; commands?: string[] };
+
+export type RecoveryGuide = {
+  app: string;
+  plan?: string;
+  staging: string;
+  order: string[];
+  steps: GuideStep[];
+  notes?: string[];
+};
+
 export const infraApi = {
   coverage: (refresh = false) =>
     call<CoverageReport>("coverage" + (refresh ? "?refresh=1" : "")),
@@ -259,6 +280,12 @@ export const infraApi = {
   propose: (app: string) => call<AppPlan>("plan/propose", { app }),
   createPlan: (app: string, repo: string, planId: string) =>
     call<AppPlan>("plan/create", { app, repo, plan_id: planId }),
+  stageRestore: (app: string) => call<StageResult>("restore/stage", { app }),
+  recoveryGuide: (app: string, staging?: string) =>
+    call<RecoveryGuide>(
+      `restore/guide?app=${encodeURIComponent(app)}` +
+        (staging ? `&staging=${encodeURIComponent(staging)}` : ""),
+    ),
   proposeSetup: (scope: string, apps?: string[]) =>
     call<SetupProposals>("setup/propose", { scope, apps }),
   createSetup: (apps: string[], repo: string, options: SetupOptions) =>

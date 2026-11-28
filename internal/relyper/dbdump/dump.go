@@ -85,6 +85,14 @@ func DumpApp(ctx context.Context, c *docker.Client, app *discovery.App, base str
 	if err := os.WriteFile(filepath.Join(tmp, ManifestName), b, 0o600); err != nil {
 		return nil, err
 	}
+	// The snapshot explains itself: notes and a restore script that work
+	// without Relyper Backup.
+	if err := os.WriteFile(filepath.Join(tmp, RestoreScriptName), []byte(RestoreScript(m)), 0o700); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(tmp, RestoreNotesName), []byte(RestoreNotes(m)), 0o600); err != nil {
+		return nil, err
+	}
 	old := dir + ".old"
 	_ = os.RemoveAll(old)
 	if _, err := os.Stat(dir); err == nil {
