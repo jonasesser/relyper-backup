@@ -175,6 +175,50 @@ export const itemName = (it: DataItem) => {
   return it.name;
 };
 
+// searchMatches lists where a search text occurs in an app: its name, its
+// services (name, container, image, Swarm service, domains, ports,
+// networks) and its data items (volume names, paths). Empty when nothing
+// matches; case-insensitive substring search.
+export const searchMatches = (
+  app: AppCoverage,
+  services: ServiceInfo[],
+  text: string,
+): string[] => {
+  const q = text.trim().toLowerCase();
+  if (!q) return [];
+  const out: string[] = [];
+  const hit = (v: string | undefined, label: string) => {
+    if (v && v.toLowerCase().includes(q) && !out.includes(label))
+      out.push(label);
+  };
+  hit(app.name, "app " + app.name);
+  hit(app.app, "app " + app.app);
+  for (const s of services) {
+    hit(s.name, "service " + s.name);
+    hit(s.container, "container " + s.container);
+    hit(s.swarm_service, "service " + s.swarm_service);
+    hit(s.image, "image " + s.image);
+    for (const d of s.domains || []) hit(d, "domain " + d);
+    for (const p of s.ports || []) hit(p, "port " + p);
+    for (const n of s.networks || []) hit(n, "network " + n);
+  }
+  for (const it of app.items || []) {
+    hit(it.service, "service " + it.service);
+    hit(it.name, `${it.kind.replace("_", " ")} ${it.name}`);
+    hit(it.path, "path " + it.path);
+  }
+  return out;
+};
+
+// itemMatches tells whether a data item row matches the search text.
+const itemMatches = (it: DataItem, text: string) => {
+  const q = text.trim().toLowerCase();
+  return (
+    !!q &&
+    [it.service, it.name, it.path].some((v) => v && v.toLowerCase().includes(q))
+  );
+};
+
 export const StateBadge = ({ state }: { state: string }) => (
   <Badge colorPalette={stateColor[state] || "gray"} data-testid="state-badge">
     {stateLabel[state] || state.replace(/_/g, " ")}
@@ -430,10 +474,12 @@ const AppCard = ({
   app,
   services,
   reload,
+  search = "",
 }: {
   app: AppCoverage;
   services: ServiceInfo[];
   reload: () => void;
+  search?: string;
 }) => {
   const [showCreate, setShowCreate] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
@@ -444,6 +490,25 @@ const AppCard = ({
   const hasDB = items.some((i) => i.kind === "database");
   const hasAppPlan = items.some((i) => i.kind === "database" && i.plan);
   const plan = (app.plans || [])[0];
+  // Search hits other than the app's own name are listed, and services are
+  // shown when the hit is in a service (image, domain, container, …).
+  const matches = searchMatches(app, services, search).filter(
+    (m) => m !== "app " + app.name && m !== "app " + app.app,
+  );
+  const q = search.trim().toLowerCase();
+  const serviceHit =
+    !!q &&
+    services.some((sv) =>
+      [
+        sv.name,
+        sv.container,
+        sv.swarm_service,
+        sv.image,
+        ...(sv.domains || []),
+        ...(sv.ports || []),
+        ...(sv.networks || []),
+      ].some((v) => v && v.toLowerCase().includes(q)),
+    );
 
   const act = async (name: string, fn: () => Promise<unknown>, ok: string) => {
     setBusy(name);
@@ -472,12 +537,23 @@ const AppCard = ({
             </Badge>
           ))}
         </Flex>
+        {matches.length > 0 && (
+          <Text fontSize="xs" data-testid="search-matches">
+            <Text as="span" color="fg.muted">
+              Matches:{" "}
+            </Text>
+            {matches.join(" · ")}
+          </Text>
+        )}
         <Stack gap={0} fontSize="sm">
           {items.map((it, i) => (
             <Flex
               key={i}
               gap={2}
               py={1.5}
+              px={itemMatches(it, search) ? 1 : 0}
+              bg={itemMatches(it, search) ? "yellow.subtle" : undefined}
+              data-match={itemMatches(it, search) || undefined}
               borderTopWidth={i ? "1px" : 0}
               wrap="wrap"
               align="center"
@@ -532,7 +608,7 @@ const AppCard = ({
             </Stack>
           </Box>
         )}
-        {showDetails && services.length > 0 && (
+        {(showDetails || serviceHit) && services.length > 0 && (
           <ServiceDetails services={services} />
         )}
         {(hasAppPlan || plan) && <TestResults app={app} />}
@@ -865,10 +941,8 @@ export const InfraPage = () => {
       (!filter.kind || a.kind === filter.kind) &&
       matchesStatus(filter.protection, a.protection) &&
       (!filter.db || (a.databases || []).includes(filter.db)) &&
-      (!filter.text ||
-        (a.app + " " + a.name)
-          .toLowerCase()
-          .includes(filter.text.toLowerCase())),
+      (!filter.text.trim() ||
+        searchMatches(a, services[a.app] || [], filter.text).length > 0),
   );
   const select = (
     key: "kind" | "db",
@@ -1020,7 +1094,7 @@ export const InfraPage = () => {
                 <Input
                   size="sm"
                   width={{ base: "100%", md: "200px" }}
-                  placeholder="Search apps"
+                  placeholder="Search apps, services, images, domains, volumes"
                   aria-label="Search apps"
                   value={filter.text}
                   onChange={(e) =>
@@ -1073,7 +1147,7 @@ export const InfraPage = () => {
                 {engines.length > 0 &&
                   select(
                     "db",
-                    "Database",
+                    "Has database",
                     engines.map((e) => [e, e] as [string, string]),
                   )}
               </Flex>
@@ -1094,6 +1168,7 @@ export const InfraPage = () => {
                 app={a}
                 services={services[a.app] || []}
                 reload={() => reload()}
+                search={filter.text}
               />
             ))}
             {(cov?.plans_without_app || []).length > 0 && (

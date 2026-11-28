@@ -8,6 +8,11 @@ import { ConfigSchema, RepoSchema } from "../../../gen/ts/v1/config_pb";
 import { InfraPage } from "./InfraPage";
 import type { CoverageReport } from "./infraApi";
 
+// jsdom has no PointerEvent; the checkbox code creates one on blur.
+if (typeof window.PointerEvent === "undefined") {
+  (window as any).PointerEvent = MouseEvent;
+}
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -118,6 +123,49 @@ describe("InfraPage", () => {
     expect(screen.getByTestId("docker-hint")).toHaveTextContent(
       "No Docker guard is configured",
     );
+  });
+
+  it("searches services, images and domains, not only app names", async () => {
+    const blog = { ...shop, app: "compose:blog", name: "blog", items: [] };
+    fetchMock.mockImplementation((url: string) => {
+      if (String(url).includes("inventory")) {
+        return Promise.resolve(
+          json({
+            apps: [
+              {
+                id: "compose:shop",
+                services: [
+                  {
+                    name: "web",
+                    image: "ghcr.io/acme/shopfront:2",
+                    state: "running",
+                    domains: ["store.example.com"],
+                  },
+                ],
+              },
+              { id: "compose:blog", services: [] },
+            ],
+          }),
+        );
+      }
+      return Promise.resolve(json(coverage([shop, blog])));
+    });
+    renderWithProviders(<InfraPage />);
+    await screen.findByTestId("app-compose:blog");
+    const search = screen.getByLabelText("Search apps");
+    fireEvent.change(search, { target: { value: "STORE.example" } });
+    await waitFor(() =>
+      expect(screen.queryByTestId("app-compose:blog")).toBeNull(),
+    );
+    expect(screen.getByTestId("search-matches")).toHaveTextContent(
+      "domain store.example.com",
+    );
+    expect(screen.getByTestId("service-details")).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "uploads" } });
+    expect(screen.getByTestId("app-compose:shop")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("app-compose:shop").querySelector("[data-match]"),
+    ).not.toBeNull();
   });
 
   it("lets the user choose the plan items", async () => {
