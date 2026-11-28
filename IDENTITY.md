@@ -40,6 +40,11 @@ Set `RELYPER_PUBLIC_URL` as well when the server runs behind a reverse proxy.
 If the configuration is invalid, the sign-in is switched off with an error in
 the log; everything else keeps running.
 
+**Settings → Authentication → Relyper Identity (OIDC)** shows the current
+state (not configured, configuration error, not offered, active), the
+configuration error if any, the callback URL to register and the variable
+names. The client secret is never shown; only whether one is set.
+
 Web UI authentication must be enabled. With authentication disabled in the
 settings, nobody needs to sign in and the button is not shown.
 

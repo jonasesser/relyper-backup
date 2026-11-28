@@ -54,6 +54,7 @@ import {
 } from "../../components/common/TwoPaneModal";
 import { SectionCard } from "../../components/common/SectionCard";
 import { ToggleField } from "../../components/common/ToggleField";
+import { IdentitySetup } from "../../relyper/identity/IdentitySetup"; // relyper
 
 export const SettingsModal = () => {
   const [config, setConfig] = useConfig();
@@ -391,6 +392,7 @@ export const SettingsModal = () => {
             </Field>
           </Stack>
         </SectionCard>
+        <IdentitySetup /> {/* relyper: OIDC sign-in status */}
       </TwoPaneSection>
 
       {/* Multihost Section */}

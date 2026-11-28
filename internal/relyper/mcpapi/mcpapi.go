@@ -98,16 +98,18 @@ func Setup(d Deps) (*Routes, error) {
 	// Sign-in through Relyper Identity (OIDC), optional. A broken
 	// configuration only disables this sign-in; local users keep working.
 	var idp *identity.Service
-	if cfg, err := identity.ConfigFromEnv(nil); err != nil {
-		zap.S().Errorw("Relyper Identity sign-in disabled: invalid configuration", "error", err)
-	} else if cfg != nil {
-		idp, err = identity.New(identity.Options{
-			Config: cfg, DataDir: dir, Version: d.Version, Audit: auditLog, BaseURL: mcpauth.BaseURL,
+	idCfg, idErr := identity.ConfigFromEnv(nil)
+	if idErr != nil {
+		zap.S().Errorw("Relyper Identity sign-in disabled: invalid configuration", "error", idErr)
+		idCfg = nil
+	} else if idCfg != nil {
+		idp, idErr = identity.New(identity.Options{
+			Config: idCfg, DataDir: dir, Version: d.Version, Audit: auditLog, BaseURL: mcpauth.BaseURL,
 			AuthEnabled: func() bool { return authEnabled(d.Config) },
 			Portal:      tenants.IdentityGate(),
 		})
-		if err != nil {
-			zap.S().Errorw("Relyper Identity sign-in disabled", "error", err)
+		if idErr != nil {
+			zap.S().Errorw("Relyper Identity sign-in disabled", "error", idErr)
 			idp = nil
 		}
 	}
@@ -177,6 +179,10 @@ func Setup(d Deps) (*Routes, error) {
 			routes.Unauthed[p] = hd
 		}
 	}
+	routes.Authed[identity.PathSetup] = identity.SetupHandler(identity.SetupOptions{
+		Config: idCfg, ConfigErr: idErr, Service: idp, BaseURL: mcpauth.BaseURL,
+		LocalAuth: func() bool { return authEnabled(d.Config) }, Getenv: os.Getenv,
+	})
 	routes.Unauthed[mcp.Path] = srv.Handler()
 	if idp != nil {
 		for p, hd := range idp.Routes() {

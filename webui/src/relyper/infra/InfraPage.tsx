@@ -648,6 +648,44 @@ const ReportSection = () => {
   );
 };
 
+// Steps to connect Docker on Easypanel, shown while Docker is not reachable.
+export const EasypanelDockerSteps = () => (
+  <Box
+    mt={3}
+    fontSize="sm"
+    wordBreak="break-word"
+    css={{ "& code": { wordBreak: "break-all" } }}
+    data-testid="easypanel-steps"
+  >
+    <Text fontWeight="medium">On Easypanel</Text>
+    <Stack as="ol" gap={1} ps={5} mt={1} listStyleType="decimal">
+      <li>
+        In the same project, add an App service <Code>docker-proxy</Code> from
+        the image <Code>tecnativa/docker-socket-proxy:v0.4.1</Code> with the
+        bind mount <Code>/var/run/docker.sock</Code> →{" "}
+        <Code>/var/run/docker.sock</Code> and the environment{" "}
+        <Code>
+          CONTAINERS=1 EXEC=1 POST=1 INFO=1 VOLUMES=1 SERVICES=1 TASKS=1 NODES=1
+        </Code>
+        . Publish no domain and no port. If its log says &quot;Address family
+        not supported&quot;, add <Code>DISABLE_IPV6=1</Code>.
+      </li>
+      <li>
+        On the Relyper Backup service set{" "}
+        <Code>RELYPER_DOCKER_HOST=tcp://&lt;project&gt;_docker-proxy:2375</Code>
+        ; Easypanel reaches services as{" "}
+        <Code>&lt;project&gt;_&lt;service&gt;</Code>.
+      </li>
+      <li>
+        Add the bind mounts <Code>/var/lib/docker/volumes</Code> and{" "}
+        <Code>/etc/easypanel/projects</Code>, each at the same path inside the
+        container (read-only if your Easypanel version allows it).
+      </li>
+      <li>Deploy, then press Refresh on this page.</li>
+    </Stack>
+  </Box>
+);
+
 export const InfraPage = () => {
   const [cov, setCov] = useState<CoverageReport | null>(null);
   const [services, setServices] = useState<Record<string, ServiceInfo[]>>({});
@@ -769,6 +807,7 @@ export const InfraPage = () => {
             proxy) and set <Code>RELYPER_DOCKER_HOST</Code>; see DEPLOYMENT.md.
             Backups of plain paths keep working without it.
           </Text>
+          <EasypanelDockerSteps />
         </SectionCard>
       )}
       {docker?.available && (

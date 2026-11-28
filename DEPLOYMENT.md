@@ -133,6 +133,21 @@ Easypanel is the primary target. Create an **App** service:
 
 For application-aware backup of the other Easypanel projects, add the
 Docker connection and mounts described in "Application-aware backup" below.
+On Easypanel:
+
+1. Add a second App service `docker-proxy` in the same project, image
+   `tecnativa/docker-socket-proxy:v0.4.1`, bind mount
+   `/var/run/docker.sock` → `/var/run/docker.sock`, environment
+   `CONTAINERS=1 EXEC=1 POST=1 INFO=1 VOLUMES=1 SERVICES=1 TASKS=1 NODES=1`
+   (plus `DISABLE_IPV6=1` if the log says "Address family not supported").
+   Publish no domain and no port.
+2. On the Relyper Backup service set
+   `RELYPER_DOCKER_HOST=tcp://<project>_docker-proxy:2375`.
+3. Bind mount `/var/lib/docker/volumes` and `/etc/easypanel/projects` at the
+   same path inside the Relyper Backup container.
+4. Deploy and press Refresh on the Infrastructure page. While Docker is not
+   reachable the page shows these steps too.
+
 Easypanel runs services as Swarm services named `<project>_<service>` and
 keeps bind-mounted data under `/etc/easypanel/projects/<project>/<service>/`;
 Relyper Backup groups apps by these conventions. They have not yet been
