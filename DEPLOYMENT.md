@@ -148,6 +148,15 @@ On Easypanel:
 4. Deploy and press Refresh on the Infrastructure page. While Docker is not
    reachable the page shows these steps too.
 
+**Only one instance per data directory.** Turn off **Zero Downtime** in the
+service's deploy settings and keep one replica. With zero downtime Easypanel
+starts the new container while the old one still uses `/data`; Relyper
+Backup then waits for the old one (up to `RELYPER_LOCK_WAIT_SECONDS`,
+default 300) and answers the health check meanwhile, so the deploy still
+finishes, but with the option off there is no waiting at all. The log line
+"another Relyper Backup process uses this data directory" means exactly
+this.
+
 Easypanel runs services as Swarm services named `<project>_<service>` and
 keeps bind-mounted data under `/etc/easypanel/projects/<project>/<service>/`;
 Relyper Backup groups apps by these conventions. They have not yet been

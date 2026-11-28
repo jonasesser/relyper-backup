@@ -35,6 +35,7 @@ import (
 	"github.com/garethgeorge/backrest/internal/relyper/mcpapi"
 	"github.com/garethgeorge/backrest/internal/relyper/roles"
 	"github.com/garethgeorge/backrest/internal/relyper/sftpapi"
+	relyperstartup "github.com/garethgeorge/backrest/internal/relyper/startup"
 	"github.com/garethgeorge/backrest/internal/resticinstaller"
 	"github.com/garethgeorge/backrest/webui"
 	"github.com/mattn/go-colorable"
@@ -167,6 +168,11 @@ func createConfigStore() config.ConfigStore {
 func newOpLog(cfg *v1.Config) (*oplog.OpLog, *sqlitestore.SqliteStore, error) {
 	oplogFile := filepath.Join(env.DataDir(), "oplog.sqlite")
 	opstore, err := sqlitestore.NewSqliteStore(oplogFile)
+	// relyper: wait for the lock instead of exiting at once. With rolling
+	// ("zero downtime") deploys the old container still holds it for a while.
+	opstore, err = relyperstartup.WaitForOplogLock(opstore, err, func() (*sqlitestore.SqliteStore, error) {
+		return sqlitestore.NewSqliteStore(oplogFile)
+	}, env.DataDir(), env.BindAddress())
 	if errors.Is(err, sqlitestore.ErrLocked) {
 		zap.L().Fatal("oplog is locked by another instance of backrest", zap.String("data_dir", env.DataDir()))
 	} else if err != nil {

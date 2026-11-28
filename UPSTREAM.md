@@ -51,7 +51,7 @@ Keep this list current; it is the merge checklist.
 
 | File | Change | Issue |
 |---|---|---|
-| `cmd/backrest/backrest.go` | registers `/healthz` and the `relyper.v1.RelyperSftp` service; calls `mcpapi.Setup` and mounts its routes (`/mcp`, OAuth, `relyper.v1.RelyperMcp`) via an extra variadic parameter of `newRootMux`; wraps the Backrest service and the authenticated routes with the read-only role gate (`internal/relyper/roles`) | #11, #12, #17, #32 |
+| `cmd/backrest/backrest.go` | registers `/healthz` and the `relyper.v1.RelyperSftp` service; calls `mcpapi.Setup` and mounts its routes (`/mcp`, OAuth, `relyper.v1.RelyperMcp`) via an extra variadic parameter of `newRootMux`; wraps the Backrest service and the authenticated routes with the read-only role gate (`internal/relyper/roles`); waits for the oplog lock instead of exiting (`internal/relyper/startup`) | #11, #12, #17, #32, #35 |
 | `internal/api/backresthandler.go` | `SetupSftp` no longer adds host keys with `ssh-keyscan` (trust on first use) | #12 |
 | `webui/src/api/client.ts` | `transport` exported for the Relyper clients | #12 |
 | `webui/src/test/setup.tsx` | global mock for `@/relyper/api` | #12 |
