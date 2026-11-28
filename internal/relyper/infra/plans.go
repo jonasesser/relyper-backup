@@ -100,7 +100,7 @@ func (s *Service) ProposeAppPlan(ctx context.Context, appID string) (*AppPlan, e
 	// Easypanel keeps domains, Traefik routing, certificates and its own
 	// settings in the directories mounted into its container. The projects
 	// directory is left out: each app plan takes only its own project data.
-	if inv.Docker.Easypanel && isEasypanelApp(app) {
+	if inv.Docker.Easypanel && isEasypanelApp(inv, app) {
 		found := false
 		for _, d := range inv.Docker.EasypanelConfig {
 			if d.BackupPath == "" {
@@ -222,9 +222,14 @@ func underAny(x string, items []PlanItem) bool {
 	return false
 }
 
-func isEasypanelApp(app *discovery.App) bool {
-	if app.Kind == discovery.KindEasypanel {
+func isEasypanelApp(inv *discovery.Inventory, app *discovery.App) bool {
+	if app.Kind == discovery.KindEasypanel || app.Project != "" {
 		return true
+	}
+	for _, m := range app.Members {
+		if a := inv.Find(m); a != nil && a.ID != app.ID && isEasypanelApp(inv, a) {
+			return true
+		}
 	}
 	for _, d := range app.ConfigDirs {
 		if strings.HasPrefix(d.HostPath, "/etc/easypanel/projects/") {

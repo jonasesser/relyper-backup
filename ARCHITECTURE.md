@@ -122,7 +122,7 @@ of these categories on failure: `invalid_input`, `dns_failure`,
 | Package | Role |
 |---|---|
 | `internal/relyper/docker` | Minimal Docker Engine API client (stdlib only): list/inspect, exec with stream demultiplexing, throwaway verification containers (label `relyper.verify=true`; removal refuses any other container). |
-| `internal/relyper/discovery` | Groups containers into apps (`compose:`, `swarm_stack:`, `easypanel:`, `container:`), detects databases by image, maps host paths into the container (`RELYPER_HOST_PATH_MAP`), marks live database files. |
+| `internal/relyper/discovery` | Groups containers into apps (`compose:`, `swarm_stack:`, `easypanel:<project>_<service>`, `container:`; tag groups `group:<tag>` from `relyper-tags.json`), detects databases by image, maps host paths into the container (`RELYPER_HOST_PATH_MAP`), marks live database files. |
 | `internal/relyper/dbdump` + `cmd/relyper-dbdump` | Dumps every database of an app with the engine's own tool, run inside the database container so credentials stay there; writes a manifest with SHA-256 and counts; verifies a dump by restoring it into a throwaway container. Runs as the plan's `SNAPSHOT_START` hook. |
 | `internal/relyper/infra` | Inventory cache, coverage from indexed snapshots, app plan creation, database and file restore tests, readiness, recovery report, hourly scheduler, notifications. State in `<data>/relyper/infra-state.json`. |
 | `internal/relyper/infraapi` | JSON API for the Infrastructure page at `/relyper/infra/`, behind the web UI authentication. |

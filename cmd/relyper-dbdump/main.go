@@ -55,6 +55,10 @@ func run(dir, appID string, timeout time.Duration) error {
 	if !inv.Docker.Available {
 		return fmt.Errorf("docker not available at %s: %s", inv.Docker.Endpoint, inv.Docker.Error)
 	}
+	// Tag groups (group:<tag>) are formed from the tags next to the config.
+	if tags, err := discovery.LoadTags(discovery.TagsPathFromEnv()); err == nil {
+		inv.ApplyTags(tags)
+	}
 	app := inv.Find(appID)
 	if app == nil {
 		return fmt.Errorf("app %s not found on this Docker host", appID)

@@ -60,7 +60,8 @@ Details: `MCP.md`.
 |---|---|---|
 | Docker discovery via the Engine API | done | #20 – stdlib client; since #38 only through the Relyper Docker guard (`docker-compose.apps.yml`) |
 | Apps: Compose projects, Swarm stacks, single containers | done | #20 |
-| Easypanel projects | partial | #20 – detected from `/etc/easypanel/projects` paths and `<project>_<service>` names; not yet checked on a real Easypanel server |
+| Easypanel projects | partial | #20 – detected from `/etc/easypanel/projects` paths and `<project>_<service>` names; since #56 every Easypanel service is its own app, the project is a label; not yet checked on a real Easypanel server |
+| Tags and tag groups | done | #56 – Relyper-only tags on apps (`relyper-tags.json` in the config directory), filter and search by tag, one backup plan per tag group across Easypanel projects, MCP `set_app_tags` |
 | Swarm services on other nodes | partial | Listed as `remote`; their data is not reachable from this node |
 | App-level backup plan (volumes + dumps) | done | #21 – one plan per app, created in the web UI or through MCP |
 | Coverage based on completed snapshots | done | #21 – web UI page "Infrastructure", `get_backup_coverage` |

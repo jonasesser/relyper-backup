@@ -24,6 +24,8 @@ const (
 	KindStack      = "swarm_stack"
 	KindEasypanel  = "easypanel"
 	KindStandalone = "container"
+	// KindGroup is a group of apps formed by a Relyper Backup tag.
+	KindGroup = "group"
 )
 
 // Database engines with dump support.
@@ -54,7 +56,7 @@ type Host struct {
 	// container (normally /etc/easypanel: its settings, domains, Traefik
 	// configuration and certificates, besides the projects).
 	EasypanelConfig []DeploymentFile `json:"easypanel_config,omitempty"`
-	Error     string `json:"error,omitempty"`
+	Error           string           `json:"error,omitempty"`
 	// Access is "guard" when the Relyper Docker guard sits in front of the
 	// daemon and "unrestricted" otherwise (raw socket or a generic proxy,
 	// which give root on the host to whoever controls Relyper Backup).
@@ -66,9 +68,16 @@ type Host struct {
 
 // App is a group of services that belong together.
 type App struct {
-	ID       string    `json:"id"` // e.g. compose:shop, swarm_stack:crm, easypanel:blog, container:nginx
-	Name     string    `json:"name"`
-	Kind     string    `json:"kind"`
+	ID   string `json:"id"` // e.g. compose:shop, swarm_stack:crm, easypanel:blog, container:nginx
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	// Project is the Easypanel project the app belongs to (Easypanel
+	// projects are coarse buckets; each Easypanel service is its own app).
+	Project string `json:"project,omitempty"`
+	// Tags are Relyper Backup tags of the app; Members the app IDs of a
+	// group app (kind group).
+	Tags     []string  `json:"tags,omitempty"`
+	Members  []string  `json:"members,omitempty"`
 	Services []Service `json:"services"`
 	// Deployment lists the files the app was deployed from (compose files).
 	Deployment []DeploymentFile `json:"deployment,omitempty"`
@@ -100,6 +109,8 @@ type Service struct {
 	DependsOn           []string          `json:"depends_on,omitempty"`
 	Domains             []string          `json:"domains,omitempty"`
 	Labels              map[string]string `json:"labels,omitempty"` // without labels that may hold secrets
+	// Member is the app a service of a group app belongs to.
+	Member string `json:"member,omitempty"`
 }
 
 // Data is a volume or bind mount of a service.
@@ -403,6 +414,7 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 	}
 	out := make([]App, 0, len(apps))
 	for _, a := range apps {
+		a.Project = easypanelProject(a.ID, a)
 		sort.Slice(a.Services, func(i, j int) bool { return a.Services[i].Name < a.Services[j].Name })
 		if a.Kind == KindEasypanel {
 			a.Notes = appendOnce(a.Notes, "Easypanel layout (Swarm service names project_service, data under /etc/easypanel/projects) is assumed from conventions and not yet verified on a real Easypanel host.")
@@ -453,9 +465,11 @@ func isEasypanelImage(image string) bool {
 // classify returns app ID, app name, kind and the service name.
 func classify(c docker.ContainerSummary, easypanel bool) (string, string, string, string) {
 	l := c.Labels
-	for _, m := range c.Mounts {
-		if g := easypanelPath.FindStringSubmatch(m.Source); g != nil {
-			return KindEasypanel + ":" + g[1], g[1], KindEasypanel, g[2]
+	if p := l["com.docker.compose.project"]; p == "" {
+		for _, m := range c.Mounts {
+			if g := easypanelPath.FindStringSubmatch(m.Source); g != nil {
+				return easypanelApp(g[1], g[2])
+			}
 		}
 	}
 	if p := l["com.docker.compose.project"]; p != "" {
@@ -470,7 +484,7 @@ func classify(c docker.ContainerSummary, easypanel bool) (string, string, string
 	}
 	if svc := l["com.docker.swarm.service.name"]; svc != "" && easypanel {
 		if p, s, ok := strings.Cut(svc, "_"); ok {
-			return KindEasypanel + ":" + p, p, KindEasypanel, s
+			return easypanelApp(p, s)
 		}
 	}
 	if svc := l["com.docker.swarm.service.name"]; svc != "" {
@@ -486,12 +500,12 @@ func classifyService(s docker.Service, easypanel bool) (string, string, string, 
 	}
 	for _, m := range s.Spec.TaskTemplate.ContainerSpec.Mounts {
 		if g := easypanelPath.FindStringSubmatch(m.Source); g != nil {
-			return KindEasypanel + ":" + g[1], g[1], KindEasypanel, g[2]
+			return easypanelApp(g[1], g[2])
 		}
 	}
 	if easypanel {
 		if p, sv, ok := strings.Cut(name, "_"); ok {
-			return KindEasypanel + ":" + p, p, KindEasypanel, sv
+			return easypanelApp(p, sv)
 		}
 	}
 	return KindStandalone + ":" + name, name, KindStandalone, name
@@ -575,7 +589,57 @@ func (inv *Inventory) Find(id string) *App {
 			return &inv.Apps[i]
 		}
 	}
+	// Plans made before each Easypanel service became its own app name the
+	// whole Easypanel project (easypanel:<project>): give them the services
+	// of all its Easypanel apps, so their dumps keep working.
+	if p, ok := strings.CutPrefix(id, KindEasypanel+":"); ok && !strings.Contains(p, "_") {
+		var members []*App
+		for i := range inv.Apps {
+			if a := &inv.Apps[i]; a.Project == p && a.Kind != KindGroup {
+				members = append(members, a)
+			}
+		}
+		if len(members) > 0 {
+			return merge(id, p, KindEasypanel, members, false)
+		}
+	}
 	return nil
+}
+
+// merge combines apps into one (Easypanel projects of old plans, tag
+// groups). With prefix, service names get the app name in front so that
+// equal names (two "db" services) stay apart.
+func merge(id, name, kind string, members []*App, prefix bool) *App {
+	out := &App{ID: id, Name: name, Kind: kind}
+	for _, a := range members {
+		out.Members = append(out.Members, a.ID)
+		for _, s := range a.Services {
+			s.Member = a.ID
+			if prefix {
+				s.Name = a.Name + "." + s.Name
+				deps := make([]string, len(s.DependsOn))
+				for i, d := range s.DependsOn {
+					deps[i] = a.Name + "." + d
+				}
+				s.DependsOn = deps
+			}
+			out.Services = append(out.Services, s)
+		}
+		for _, d := range a.Deployment {
+			if !hasDeployment(out.Deployment, d.HostPath) {
+				out.Deployment = append(out.Deployment, d)
+			}
+		}
+		for _, d := range a.ConfigDirs {
+			if !hasDeployment(out.ConfigDirs, d.HostPath) {
+				out.ConfigDirs = append(out.ConfigDirs, d)
+			}
+		}
+		for _, n := range a.Notes {
+			out.Notes = appendOnce(out.Notes, n)
+		}
+	}
+	return out
 }
 
 // ValidAppID reports whether id is safe to use in file names and hook
@@ -657,4 +721,24 @@ func EasypanelConfig(containers []docker.ContainerSummary, opt Options) []Deploy
 		}
 	}
 	return out
+}
+
+// easypanelApp names the app of an Easypanel service: every service is its
+// own app; the project is only a label (see App.Project).
+func easypanelApp(project, service string) (string, string, string, string) {
+	return KindEasypanel + ":" + project + "_" + service, service, KindEasypanel, service
+}
+
+// easypanelProject returns the Easypanel project of an app ID or a compose
+// working directory, or "".
+func easypanelProject(appID string, a *App) string {
+	if p, _, ok := strings.Cut(strings.TrimPrefix(appID, KindEasypanel+":"), "_"); ok && strings.HasPrefix(appID, KindEasypanel+":") {
+		return p
+	}
+	for _, d := range a.ConfigDirs {
+		if g := easypanelPath.FindStringSubmatch(d.HostPath); g != nil {
+			return g[1]
+		}
+	}
+	return ""
 }

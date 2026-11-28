@@ -32,6 +32,16 @@ type CreateAppPlanIn struct {
 	Paths     []string   `json:"paths,omitempty" jsonschema:"item paths from propose_app_backup_plan to back up; default: the items selected there. Required items are always included."`
 }
 
+type SetTagsIn struct {
+	AppID string   `json:"app_id" jsonschema:"app ID from discover_apps (not a group)"`
+	Tags  []string `json:"tags" jsonschema:"the app's complete tag list (replaces the old one); letters, digits, '-', '_', '.'"`
+}
+
+type SetTagsOut struct {
+	AppID string   `json:"app_id"`
+	Tags  []string `json:"tags"`
+}
+
 type ProposeSetupIn struct {
 	Scope string   `json:"scope" jsonschema:"all (every app on the Docker host), easypanel (every Easypanel project) or apps (the apps listed in app_ids)"`
 	Apps  []string `json:"app_ids,omitempty" jsonschema:"app IDs from discover_apps, for scope apps"`
@@ -111,6 +121,16 @@ func registerInfraTools(r *registrar) {
 	addTool(r, read("propose_app_backup_plan", "Propose app backup plan", "Shows what create_app_backup_plan would set up for an app: every item it can back up (compose directory with .env, Easypanel settings, volumes and bind mounts, with a default choice; cache and temporary data are off by default), the dump directory, the hook that dumps the databases before each backup, and data that cannot be backed up from here. Changes nothing."),
 		func(ctx context.Context, c caller, in AppIn) (*infra.AppPlan, error) {
 			return inf.ProposeAppPlan(ctx, in.AppID)
+		})
+
+	addTool(r, toolSpec{Name: "set_app_tags", Title: "Set app tags", Scope: mcpauth.ScopePlansManage,
+		Description: "Sets the Relyper Backup tags of an app. Every tag forms a group app (group:<tag>) with the services of all apps that carry it, across Easypanel projects; propose_app_backup_plan and create_app_backup_plan work with the group ID like with any app. Tags exist only in Relyper Backup."},
+		func(ctx context.Context, c caller, in SetTagsIn) (*SetTagsOut, error) {
+			t, err := inf.SetTags(ctx, in.AppID, in.Tags, c.actor())
+			if err != nil {
+				return nil, err
+			}
+			return &SetTagsOut{AppID: in.AppID, Tags: t}, nil
 		})
 
 	addTool(r, toolSpec{Name: "create_app_backup_plan", Title: "Create app backup plan", Scope: mcpauth.ScopePlansManage,

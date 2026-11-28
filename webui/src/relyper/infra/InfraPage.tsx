@@ -193,6 +193,10 @@ export const searchMatches = (
   };
   hit(app.name, "app " + app.name);
   hit(app.app, "app " + app.app);
+  // "project b" finds the services of Easypanel project b.
+  if (app.project)
+    hit("Easypanel project " + app.project, "Easypanel project " + app.project);
+  for (const t of app.tags || []) hit(t, "tag " + t);
   for (const s of services) {
     hit(s.name, "service " + s.name);
     hit(s.container, "container " + s.container);
@@ -470,6 +474,70 @@ const TestResults = ({ app }: { app: AppCoverage }) => {
   );
 };
 
+// appDescription is the line under an app's name: its ID and type, and for
+// an Easypanel service the Easypanel project it belongs to.
+export const appDescription = (app: AppCoverage) => {
+  if (app.kind === "group")
+    return `Tag group · ${(app.members || []).length} apps`;
+  const kind = app.kind.replace("_", " ");
+  return app.project
+    ? `Easypanel project ${app.project} · ${app.app}`
+    : `${app.app} · ${kind}`;
+};
+
+// TagEditor edits the Relyper Backup tags of an app. Tags live only in
+// Relyper Backup (next to its config) and group apps across Easypanel
+// projects; every tag can get its own backup plan.
+const TagEditor = ({
+  app,
+  onDone,
+}: {
+  app: AppCoverage;
+  onDone: () => void;
+}) => {
+  const [text, setText] = useState((app.tags || []).join(", "));
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const tags = text
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      await infraApi.setTags(app.app, tags);
+      alerts.success("Tags saved");
+      onDone();
+    } catch (e) {
+      alerts.error(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Stack gap={1} fontSize="sm" data-testid="tag-editor">
+      <Flex gap={2} wrap="wrap">
+        <Input
+          size="sm"
+          flex="1 1 220px"
+          aria-label="Tags"
+          placeholder="e.g. shop, customer-a"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && save()}
+        />
+        <Button size="sm" loading={busy} onClick={save} data-testid="tag-save">
+          Save tags
+        </Button>
+      </Flex>
+      <Text fontSize="xs" color="fg.muted">
+        Separate tags with commas. Apps with the same tag form a tag group that
+        can get one backup plan, also across Easypanel projects. Tags exist only
+        in Relyper Backup.
+      </Text>
+    </Stack>
+  );
+};
+
 const AppCard = ({
   app,
   services,
@@ -484,7 +552,9 @@ const AppCard = ({
   const [showCreate, setShowCreate] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [showTags, setShowTags] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const isGroup = app.kind === "group";
   // The server sends null for apps without data items.
   const items = app.items || [];
   const hasDB = items.some((i) => i.kind === "database");
@@ -524,10 +594,7 @@ const AppCard = ({
   };
 
   return (
-    <SectionCard
-      title={app.name}
-      description={`${app.app} · ${app.kind.replace("_", " ")}`}
-    >
+    <SectionCard title={app.name} description={appDescription(app)}>
       <Stack gap={3} data-testid={`app-${app.app}`}>
         <Flex gap={2} align="center" wrap="wrap">
           <StateBadge state={app.protection || app.state} />
@@ -536,7 +603,23 @@ const AppCard = ({
               plan {p}
             </Badge>
           ))}
+          {!isGroup &&
+            (app.tags || []).map((t) => (
+              <Badge
+                key={t}
+                colorPalette="purple"
+                variant="subtle"
+                data-testid="tag-badge"
+              >
+                # {t}
+              </Badge>
+            ))}
         </Flex>
+        {isGroup && (app.members || []).length > 0 && (
+          <Text fontSize="xs" color="fg.muted" data-testid="group-members">
+            Apps: {app.members!.join(", ")}
+          </Text>
+        )}
         {matches.length > 0 && (
           <Text fontSize="xs" data-testid="search-matches">
             <Text as="span" color="fg.muted">
@@ -623,6 +706,16 @@ const AppCard = ({
               {showDetails ? "Hide services" : "Services"}
             </Button>
           )}
+          {!isGroup && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowTags(!showTags)}
+              data-testid="tags-toggle"
+            >
+              {showTags ? "Close tags" : "Tags"}
+            </Button>
+          )}
           {!hasAppPlan && items.length > 0 && (
             <Button
               size="sm"
@@ -689,6 +782,15 @@ const AppCard = ({
             </Button>
           )}
         </Flex>
+        {showTags && (
+          <TagEditor
+            app={app}
+            onDone={() => {
+              setShowTags(false);
+              reload();
+            }}
+          />
+        )}
         {showRecovery && <RecoveryPanel app={app.app} />}
         {showCreate && (
           <CreatePlanForm
@@ -891,6 +993,7 @@ export const InfraPage = () => {
     kind: "",
     protection: "",
     db: "",
+    tag: "",
   });
   const [rd, setRd] = useState<ReadinessReport | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -930,7 +1033,12 @@ export const InfraPage = () => {
   }, [tab]);
 
   const docker = cov?.docker;
-  const apps = cov?.apps || [];
+  // Tag groups are listed on their own and not counted with the apps, as
+  // their members are already counted.
+  const all = cov?.apps || [];
+  const apps = all.filter((a) => a.kind !== "group");
+  const groups = all.filter((a) => a.kind === "group");
+  const tags = Array.from(new Set(apps.flatMap((a) => a.tags || []))).sort();
   const counts = (s: string[]) =>
     apps.filter((a) => s.includes(a.protection)).length;
   const engines = Array.from(
@@ -941,11 +1049,18 @@ export const InfraPage = () => {
       (!filter.kind || a.kind === filter.kind) &&
       matchesStatus(filter.protection, a.protection) &&
       (!filter.db || (a.databases || []).includes(filter.db)) &&
+      (!filter.tag || (a.tags || []).includes(filter.tag)) &&
       (!filter.text.trim() ||
         searchMatches(a, services[a.app] || [], filter.text).length > 0),
   );
+  const shownGroups = groups.filter(
+    (g) =>
+      (!filter.tag || g.name === filter.tag) &&
+      (!filter.text.trim() ||
+        g.name.toLowerCase().includes(filter.text.trim().toLowerCase())),
+  );
   const select = (
-    key: "kind" | "db",
+    key: "kind" | "db" | "tag",
     label: string,
     options: [string, string][],
   ) => (
@@ -1150,7 +1265,28 @@ export const InfraPage = () => {
                     "Has database",
                     engines.map((e) => [e, e] as [string, string]),
                   )}
+                {tags.length > 0 &&
+                  select(
+                    "tag",
+                    "Tag",
+                    tags.map((t) => [t, t] as [string, string]),
+                  )}
               </Flex>
+            )}
+            {shownGroups.length > 0 && (
+              <Stack gap={4} data-testid="tag-groups">
+                <Heading size="sm">Tag groups</Heading>
+                {shownGroups.map((g) => (
+                  <AppCard
+                    key={g.app}
+                    app={g}
+                    services={services[g.app] || []}
+                    reload={() => reload()}
+                    search={filter.text}
+                  />
+                ))}
+                <Heading size="sm">Apps</Heading>
+              </Stack>
             )}
             {apps.length > 0 && shown.length === 0 && (
               <Text fontSize="sm" color="fg.muted">

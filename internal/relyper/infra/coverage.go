@@ -74,6 +74,11 @@ type AppCoverage struct {
 	Items     []CoverageItem `json:"items"`
 	Plans     []string       `json:"plans,omitempty"`
 	Notes     []string       `json:"notes,omitempty"`
+	// Project is the Easypanel project; Tags the Relyper Backup tags;
+	// Members the apps of a tag group (kind group).
+	Project string   `json:"project,omitempty"`
+	Tags    []string `json:"tags,omitempty"`
+	Members []string `json:"members,omitempty"`
 }
 
 // CoverageReport covers all apps.
@@ -245,13 +250,37 @@ func (s *Service) Coverage(ctx context.Context) (*CoverageReport, error) {
 		runs[p.Id] = s.planRun(cfg, p.Id)
 	}
 	usedPlans := map[string]bool{}
-	for _, app := range inv.Apps {
-		ac := AppCoverage{App: app.ID, Name: app.Name, Kind: app.Kind, Notes: app.Notes}
-		var dumpPlans []*v1.Plan
-		for _, p := range cfg.Plans {
-			if id, dir := HookApp(p); id == app.ID && planCovers(p, dbdump.Dir(dir, app.ID)) {
-				dumpPlans = append(dumpPlans, p)
+	// A dump plan of a tag group (or of a whole Easypanel project, from
+	// before each Easypanel service became its own app) also dumps the
+	// databases of its members.
+	hookMembers := map[string]map[string]bool{}
+	for _, p := range cfg.Plans {
+		if id, _ := HookApp(p); id != "" && hookMembers[id] == nil {
+			hookMembers[id] = map[string]bool{id: true}
+			if g := inv.Find(id); g != nil {
+				for _, m := range g.Members {
+					hookMembers[id][m] = true
+				}
 			}
+		}
+	}
+	for _, app := range inv.Apps {
+		ac := AppCoverage{App: app.ID, Name: app.Name, Kind: app.Kind, Notes: app.Notes, Project: app.Project, Tags: app.Tags, Members: app.Members}
+		// dumpPlansFor lists the plans that dump the databases of a service
+		// and the app whose dump directory they use. A service of a group is
+		// also protected by the dump plan of the app it belongs to.
+		dumpPlansFor := func(svc discovery.Service) (plans []*v1.Plan, dumpApp string) {
+			dumpApp = app.ID
+			for _, p := range cfg.Plans {
+				id, dir := HookApp(p)
+				if (hookMembers[id][app.ID] || (svc.Member != "" && hookMembers[id][svc.Member])) && planCovers(p, dbdump.Dir(dir, id)) {
+					if len(plans) == 0 {
+						dumpApp = id
+					}
+					plans = append(plans, p)
+				}
+			}
+			return plans, dumpApp
 		}
 		dbState := StateUnprotected
 		for _, svc := range app.Services {
@@ -276,12 +305,13 @@ func (s *Service) Coverage(ctx context.Context) (*CoverageReport, error) {
 			} else if svc.Database != nil {
 				ac.Databases = appendUnique(ac.Databases, svc.Database.Engine)
 				item := CoverageItem{Service: svc.Name, Kind: "database", Name: svc.Database.Engine}
+				dumpPlans, dumpApp := dumpPlansFor(svc)
 				if len(dumpPlans) == 0 {
 					item.State = StateUnprotected
 				} else {
-					dir := dbdump.Dir(s.s.DumpDir, app.ID)
+					dir := dbdump.Dir(s.s.DumpDir, dumpApp)
 					if _, d := HookApp(dumpPlans[0]); d != "" {
-						dir = dbdump.Dir(d, app.ID)
+						dir = dbdump.Dir(d, dumpApp)
 					}
 					item = mergeItem(item, s.evaluate(cfg, runs, dumpPlans, dir, now))
 					item.Path = dir
@@ -368,7 +398,9 @@ func (s *Service) Coverage(ctx context.Context) (*CoverageReport, error) {
 		ac.State = StateProtected
 		planSet := map[string]bool{}
 		for _, it := range ac.Items {
-			rep.Totals[it.State]++
+			if app.Kind != discovery.KindGroup {
+				rep.Totals[it.State]++
+			}
 			if stateRank[it.State] > stateRank[ac.State] {
 				ac.State = it.State
 			}

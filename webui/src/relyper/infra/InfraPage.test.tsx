@@ -350,4 +350,77 @@ describe("InfraPage", () => {
     expect(screen.getByTestId("app-compose:shop")).toBeInTheDocument();
     expect(screen.queryByTestId("app-easypanel:blog")).toBeNull();
   });
+
+  it("shows Easypanel projects, tags and tag groups", async () => {
+    let sent: any = null;
+    const web = {
+      ...shop,
+      app: "easypanel:a_web",
+      name: "web",
+      kind: "easypanel",
+      project: "a",
+      tags: ["shop"],
+    };
+    const blog = {
+      ...shop,
+      app: "easypanel:b_blog",
+      name: "blog",
+      kind: "easypanel",
+      project: "b",
+    };
+    const group = {
+      ...shop,
+      app: "group:shop",
+      name: "shop",
+      kind: "group",
+      tags: ["shop"],
+      members: ["easypanel:a_web"],
+    };
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (String(url).includes("tags/set")) {
+        sent = JSON.parse(String(init?.body));
+        return Promise.resolve(json({ app: sent.app, tags: ["shop", "x"] }));
+      }
+      return Promise.resolve(json(coverage([web, blog, group])));
+    });
+    renderWithProviders(<InfraPage />);
+    const card = await screen.findByTestId("app-easypanel:a_web");
+    expect(
+      screen.getByText("Easypanel project a · easypanel:a_web"),
+    ).toBeInTheDocument();
+    expect(card).toHaveTextContent("# shop");
+    // The group is listed on its own and not counted with the apps.
+    expect(screen.getByTestId("tag-groups")).toHaveTextContent(
+      "Tag group · 1 apps",
+    );
+    expect(screen.getByTestId("summary-unprotected")).toHaveTextContent(
+      "2 unprotected",
+    );
+    fireEvent.change(screen.getByTestId("filter-tag"), {
+      target: { value: "shop" },
+    });
+    expect(screen.queryByTestId("app-easypanel:b_blog")).toBeNull();
+    expect(screen.getByTestId("app-group:shop")).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId("filter-tag"), {
+      target: { value: "" },
+    });
+    fireEvent.change(screen.getByLabelText("Search apps"), {
+      target: { value: "project b" },
+    });
+    expect(screen.queryByTestId("app-easypanel:a_web")).toBeNull();
+    expect(screen.getByTestId("app-easypanel:b_blog")).toHaveTextContent(
+      "Easypanel project b",
+    );
+    fireEvent.change(screen.getByLabelText("Search apps"), {
+      target: { value: "" },
+    });
+    const blogCard = screen.getByTestId("app-easypanel:b_blog");
+    fireEvent.click(blogCard.querySelector("[data-testid=tags-toggle]")!);
+    fireEvent.change(screen.getByLabelText("Tags"), {
+      target: { value: "shop, x" },
+    });
+    fireEvent.click(screen.getByTestId("tag-save"));
+    await waitFor(() => expect(sent).not.toBeNull());
+    expect(sent).toEqual({ app: "easypanel:b_blog", tags: ["shop", "x"] });
+  });
 });

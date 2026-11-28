@@ -8,6 +8,11 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 
 ### Added
 
+- Every Easypanel service is its own app; the Easypanel project is shown as
+  a label. Tags (Relyper Backup only, stored next to `config.json`) group
+  apps across Easypanel projects: filter and search by tag, one backup plan
+  per tag group with the dumps of all its databases, MCP tool
+  `set_app_tags`. Plans for a whole Easypanel project keep working. (#56)
 - Database servers with several databases are also dumped per database;
   `restore-databases.sh --database=<service>/<name>` restores one database
   of a shared server without touching the others. (#53)

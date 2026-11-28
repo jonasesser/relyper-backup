@@ -2,6 +2,7 @@
 package discovery
 
 import (
+	"sort"
 	"strings"
 	"testing"
 
@@ -54,12 +55,12 @@ func TestBuild(t *testing.T) {
 	for _, a := range apps {
 		ids[a.ID] = true
 	}
-	for _, id := range []string{"compose:shop", "swarm_stack:crm", "container:nginx", "easypanel:blog"} {
+	for _, id := range []string{"compose:shop", "swarm_stack:crm", "container:nginx", "easypanel:blog_wordpress", "easypanel:blog_db"} {
 		if !ids[id] {
 			t.Errorf("missing app %s in %v", id, ids)
 		}
 	}
-	if len(apps) != 4 {
+	if len(apps) != 5 {
 		t.Errorf("unexpected apps (self, verify and easypanel containers must be skipped): %v", ids)
 	}
 
@@ -83,9 +84,16 @@ func TestBuild(t *testing.T) {
 		t.Errorf("crm db: %+v notes %v", crm.Services[1], crm.Notes)
 	}
 
+	// Each Easypanel service is its own app; the project is a label.
+	wp := inv.Find("easypanel:blog_wordpress")
+	if wp == nil || wp.Name != "wordpress" || wp.Project != "blog" || len(wp.Services) != 1 || len(wp.Notes) == 0 {
+		t.Fatalf("wordpress: %+v", wp)
+	}
+	// Plans made for the whole project (easypanel:blog) still find all of
+	// its services.
 	blog := inv.Find("easypanel:blog")
-	if len(blog.Services) != 2 || blog.Services[0].Name != "db" || blog.Services[1].Name != "wordpress" || len(blog.Notes) == 0 {
-		t.Fatalf("blog: %+v", blog)
+	if blog == nil || len(blog.Services) != 2 || len(blog.Members) != 2 {
+		t.Fatalf("old project ID: %+v", blog)
 	}
 }
 
@@ -193,5 +201,48 @@ func TestSwarmStoppedVersusRemote(t *testing.T) {
 	notes := strings.Join(a.Notes, " ")
 	if !strings.Contains(notes, "missing_vol") || !strings.Contains(notes, "stopped") || !strings.Contains(notes, "another Swarm node") {
 		t.Errorf("notes: %v", a.Notes)
+	}
+}
+
+func TestTags(t *testing.T) {
+	path := t.TempDir() + "/" + TagsFileName
+	if tags, err := LoadTags(path); err != nil || len(tags) != 0 {
+		t.Fatalf("missing file: %v %v", tags, err)
+	}
+	if _, err := CleanTags([]string{"ok", "no;rm -rf"}); err == nil {
+		t.Fatal("bad tag accepted")
+	}
+	clean, err := CleanTags([]string{"Berlin Beat", "berlin-beat", " ", "shop"})
+	if err != nil || len(clean) != 2 || clean[0] != "berlin-beat" {
+		t.Fatalf("clean: %v %v", clean, err)
+	}
+	tags := Tags{"easypanel:hosting_web": {"berlin-beat"}, "easypanel:data_db": {"berlin-beat", "shared"}}
+	if err := SaveTags(path, tags); err != nil {
+		t.Fatal(err)
+	}
+	tags, err = LoadTags(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv := &Inventory{Apps: []App{
+		{ID: "easypanel:hosting_web", Name: "web", Kind: KindEasypanel, Project: "hosting", Services: []Service{{Name: "web", DependsOn: []string{"db"}}}},
+		{ID: "easypanel:data_db", Name: "db", Kind: KindEasypanel, Project: "data", Services: []Service{{Name: "db", Database: &Database{Engine: EnginePostgres}}}},
+	}}
+	inv.ApplyTags(tags)
+	inv.ApplyTags(tags) // idempotent
+	g := inv.Find(GroupID("berlin-beat"))
+	if g == nil || len(g.Members) != 2 || len(g.Services) != 2 || !ValidAppID(g.ID) {
+		t.Fatalf("group: %+v", g)
+	}
+	names := []string{g.Services[0].Name, g.Services[1].Name}
+	sort.Strings(names)
+	if names[0] != "db.db" || names[1] != "web.web" {
+		t.Fatalf("service names: %v", names)
+	}
+	if web := inv.Find("easypanel:hosting_web"); web.Services[0].DependsOn[0] != "db" || len(web.Tags) != 1 {
+		t.Fatalf("member changed: %+v", web)
+	}
+	if n := len(inv.Apps); n != 4 {
+		t.Fatalf("apps: %d", n)
 	}
 }

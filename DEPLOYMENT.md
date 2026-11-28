@@ -212,7 +212,16 @@ them when convenient.
 
 Easypanel runs services as Swarm services named `<project>_<service>` and
 keeps bind-mounted data under `/etc/easypanel/projects/<project>/<service>/`;
-Relyper Backup groups apps by these conventions. They have not yet been
+Relyper Backup makes every Easypanel service its own app
+(`easypanel:<project>_<service>`) and shows the Easypanel project only as a
+label. To group services the way you think of them (also across Easypanel
+projects) give them tags on the Infrastructure page ("Tags"): each tag forms
+a tag group that can get one backup plan with the data and database dumps
+of all its services. Tags exist only in Relyper Backup; they are stored in
+`relyper-tags.json` next to `config.json`, so a backup of the config
+directory keeps them. Plans created for a whole Easypanel project before
+(`easypanel:<project>`) keep working and keep dumping all databases of the
+project. These conventions have not yet been
 checked on a real Easypanel server – look at the Infrastructure page after
 the first start and report anything that is grouped wrongly. Details of what
 the guard allows: "Relyper Docker guard" below.

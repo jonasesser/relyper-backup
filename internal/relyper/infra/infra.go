@@ -16,6 +16,7 @@ package infra
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -63,6 +64,9 @@ type Settings struct {
 	// RestoreDir is where guided restores stage data (RELYPER_RESTORE_DIR;
 	// default /restore if it exists, else <data>/relyper/restore).
 	RestoreDir string
+	// TagsPath is the file with the Relyper Backup tags of apps (in the
+	// config directory, so a backup of /config keeps them).
+	TagsPath string
 }
 
 // SettingsFromEnv reads RELYPER_* variables.
@@ -94,6 +98,7 @@ func SettingsFromEnv(dataDir string) Settings {
 	if v := os.Getenv("RELYPER_RESTORE_DIR"); v != "" && filepath.IsAbs(v) {
 		s.RestoreDir = filepath.Clean(v)
 	}
+	s.TagsPath = discovery.TagsPathFromEnv()
 	if v := os.Getenv("RELYPER_DUMP_COMMAND"); v != "" {
 		s.DumpCommand = v
 	}
@@ -160,6 +165,11 @@ func (s *Service) Inventory(ctx context.Context, refresh bool) *discovery.Invent
 		inv = discovery.Discover(ctx, s.docker, discovery.Options{PathMap: s.s.PathMap, SelfID: discovery.SelfContainerID()})
 		if s.s.DockerConfigError != "" && inv.Docker.Error == "" {
 			inv.Docker.Error = s.s.DockerConfigError
+		}
+		if s.s.TagsPath != "" {
+			if tags, err := discovery.LoadTags(s.s.TagsPath); err == nil {
+				inv.ApplyTags(tags)
+			}
 		}
 	}
 	s.mu.Lock()
@@ -309,4 +319,33 @@ func (s *store) lastVerified() (db, files *VerifiedRestore) {
 		}
 	}
 	return db, files
+}
+
+// SetTags replaces the Relyper Backup tags of an app. Each tag forms a
+// group that can get its own backup plan.
+func (s *Service) SetTags(ctx context.Context, appID string, tags []string, actor string) ([]string, error) {
+	if !discovery.ValidAppID(appID) || strings.HasPrefix(appID, discovery.KindGroup+":") {
+		return nil, fmt.Errorf("invalid app ID %q", appID)
+	}
+	if s.s.TagsPath == "" {
+		return nil, errors.New("no place to store tags")
+	}
+	clean, err := discovery.CleanTags(tags)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	all, err := discovery.LoadTags(s.s.TagsPath)
+	if err == nil {
+		all[appID] = clean
+		err = discovery.SaveTags(s.s.TagsPath, all)
+	}
+	s.inv = nil // rebuild the groups
+	s.mu.Unlock()
+	if err != nil {
+		s.record(actor, "tags.set", "error", appID+": "+err.Error())
+		return nil, err
+	}
+	s.record(actor, "tags.set", "ok", fmt.Sprintf("%s: %s", appID, strings.Join(clean, ", ")))
+	return clean, nil
 }

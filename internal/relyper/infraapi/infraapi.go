@@ -53,6 +53,8 @@ type body struct {
 	Plan   string `json:"plan"`
 	// Paths chooses the items of an app plan (nil: the defaults).
 	Paths []string `json:"paths"`
+	// Tags are the Relyper Backup tags of an app (tags/set).
+	Tags []string `json:"tags"`
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -115,6 +117,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case !get && route == "plan/create":
 		p, err := h.Infra.CreateAppPlan(ctx, infra.CreateAppPlanRequest{AppID: b.App, RepoID: b.Repo, PlanID: b.PlanID, Paths: b.Paths}, user(r))
 		respond(w, p, err)
+	case !get && route == "tags/set":
+		t, err := h.Infra.SetTags(ctx, b.App, b.Tags, user(r))
+		respond(w, map[string]any{"app": b.App, "tags": t}, err)
 	case !get && route == "restore/stage":
 		res, err := h.Infra.StageAppRestore(ctx, b.App, user(r))
 		respond(w, res, err)

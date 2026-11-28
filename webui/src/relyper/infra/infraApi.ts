@@ -34,6 +34,12 @@ export type AppCoverage = {
   items: DataItem[];
   plans?: string[];
   notes?: string[];
+  // Easypanel project of an Easypanel service.
+  project?: string;
+  // Relyper Backup tags; every tag forms a group app (kind "group").
+  tags?: string[];
+  // Members of a group app.
+  members?: string[];
 };
 
 export type DockerHost = {
@@ -301,6 +307,8 @@ export const infraApi = {
   propose: (app: string) => call<AppPlan>("plan/propose", { app }),
   createPlan: (app: string, repo: string, planId: string, paths?: string[]) =>
     call<AppPlan>("plan/create", { app, repo, plan_id: planId, paths }),
+  setTags: (app: string, tags: string[]) =>
+    call<{ app: string; tags: string[] }>("tags/set", { app, tags }),
   stageRestore: (app: string) => call<StageResult>("restore/stage", { app }),
   recoveryGuide: (app: string, staging?: string) =>
     call<RecoveryGuide>(
