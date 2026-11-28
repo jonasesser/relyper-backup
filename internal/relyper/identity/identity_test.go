@@ -408,6 +408,14 @@ func TestOperatorRolesOnlyInOperatorTenant(t *testing.T) {
 		t.Fatal("backup_admin without tenant signed in as operator")
 	}
 
+	// The provider's master-tenant flag is accepted.
+	e = newEnv(t)
+	e.idp.claims = map[string]any{"roles": []string{"backup_admin"}, "tenant": "1", "relyper_is_master_tenant": true}
+	e.get(t, e.idp.authorize(t, e.startLogin(t)))
+	if code, _ := e.handoff(t); code != http.StatusOK {
+		t.Fatal("master tenant flag refused")
+	}
+
 	// tenant_id is accepted as well.
 	e = newEnv(t)
 	e.idp.claims = map[string]any{"roles": []string{"backup_admin"}, "tenant": nil, "tenant_id": "relyper"}
@@ -427,7 +435,7 @@ func TestOperatorTenantConfig(t *testing.T) {
 	base["RELYPER_OIDC_OPERATOR_TENANT"] = "*"
 	c, _ = ConfigFromEnv(func(k string) string { return base[k] })
 	cl := &client{cfg: c}
-	if got := cl.operatorScoped([]string{"backup_admin"}, map[string]any{}); len(got) != 1 {
+	if got, _ := cl.operatorScoped([]string{"backup_admin"}, map[string]any{}); len(got) != 1 {
 		t.Fatalf("* should keep operator roles, got %v", got)
 	}
 }

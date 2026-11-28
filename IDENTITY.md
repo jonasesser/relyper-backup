@@ -32,7 +32,7 @@ package cannot be used directly because the server is written in Go.
 | `RELYPER_OIDC_REDIRECT_URI` | `<RELYPER_PUBLIC_URL>/auth/oidc/callback` | Must match the registration byte for byte and end in `/auth/oidc/callback`. |
 | `RELYPER_OIDC_LOGIN_ROLE` | `backup_user` | Role needed to sign in. |
 | `RELYPER_OIDC_ADMIN_ROLE` | `backup_admin` | Role needed to approve MCP requests and to create or revoke MCP tokens. It also allows signing in. |
-| `RELYPER_OIDC_OPERATOR_TENANT` | `relyper` | Tenant (claim `tenant` or `tenant_id`) in which the login and admin roles count. In other tenants they are ignored. `*` accepts them from any tenant, for providers without tenants. |
+| `RELYPER_OIDC_OPERATOR_TENANT` | `relyper` | Tenant (claim `tenant` or `tenant_id`) in which the login and admin roles count. In other tenants they are ignored and the sign-in fails with `wrong_tenant` (the log names the token's tenant). Relyper Identity's `relyper_is_master_tenant: true` is accepted as well. `*` accepts them from any tenant, for providers without tenants. |
 | `RELYPER_OIDC_SCOPES` | `openid email profile roles` | Requested scopes. |
 | `RELYPER_OIDC_DISPLAY_NAME` | `Relyper` | Text on the sign-in buttons. |
 | `RELYPER_OIDC_SESSION_HOURS` | `8` | Lifetime of a web UI session (1–168). |

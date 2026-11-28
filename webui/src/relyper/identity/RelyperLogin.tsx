@@ -20,6 +20,8 @@ const authUrl = (path: string) =>
 export const loginErrorMessages: Record<string, string> = {
   forbidden: "Your account has no access to Relyper Backup.",
   missing_email: "Your account has no e-mail address.",
+  wrong_tenant:
+    "Your account has an operator role, but it was signed in for another tenant. Operator roles count only in the operator tenant (RELYPER_OIDC_OPERATOR_TENANT). The server log names the tenant.",
   invalid_state:
     "The sign-in expired or was started in another browser. Try again.",
   provider_unavailable:

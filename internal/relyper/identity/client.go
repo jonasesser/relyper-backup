@@ -202,7 +202,8 @@ func (c *client) verifyIDToken(ctx context.Context, p *gooidc.Provider, raw, non
 		return nil, newErr("invalid_id_token", "The identity could not be verified.", "azp does not match the client")
 	}
 	id := claimsToIdentity(claims)
-	id.Roles = c.operatorScoped(id.Roles, claims)
+	var otherTenant string
+	id.Roles, otherTenant = c.operatorScoped(id.Roles, claims)
 	if id.Subject == "" {
 		return nil, newErr("invalid_id_token", "The identity could not be verified.", "empty sub")
 	}
@@ -210,6 +211,9 @@ func (c *client) verifyIDToken(ctx context.Context, p *gooidc.Provider, raw, non
 		return nil, newErr("missing_email", "Your account has no e-mail address.", "id token without email")
 	}
 	if !c.mayLogin(id.Roles) && (c.extraLogin == nil || !c.extraLogin(id)) {
+		if otherTenant != "" {
+			return nil, newErr("wrong_tenant", "Your account was signed in for tenant \""+otherTenant+"\". Operator roles count only in tenant \""+c.cfg.OperatorTenant+"\". Make it your first tenant in Relyper Identity, or set RELYPER_OIDC_OPERATOR_TENANT.", "operator role in tenant "+otherTenant)
+		}
 		return nil, newErr("forbidden", "Your account has no access to Relyper Backup. Ask an administrator for the role "+c.cfg.LoginRole+".", "missing role "+c.cfg.LoginRole)
 	}
 	return id, nil
@@ -217,21 +221,29 @@ func (c *client) verifyIDToken(ctx context.Context, p *gooidc.Provider, raw, non
 
 // operatorScoped drops LoginRole and AdminRole unless the token was issued
 // for the operator tenant. Relyper Identity puts only the roles of the
-// token's own tenant into "roles", so the tenant claim is the one to check.
-func (c *client) operatorScoped(roles []string, claims map[string]any) []string {
+// token's own tenant into "roles", so the tenant claim is the one to check;
+// its own relyper_is_master_tenant flag is accepted as well. When roles
+// were dropped, the token's tenant is returned (or "(none)").
+func (c *client) operatorScoped(roles []string, claims map[string]any) ([]string, string) {
 	if c.cfg.OperatorTenant == AnyTenant {
-		return roles
+		return roles, ""
 	}
 	tenant := asString(claims["tenant"])
 	if tenant == "" {
 		tenant = asString(claims["tenant_id"])
 	}
-	if tenant == c.cfg.OperatorTenant {
-		return roles
+	if master, _ := claims["relyper_is_master_tenant"].(bool); master || tenant == c.cfg.OperatorTenant {
+		return roles, ""
+	}
+	if !c.mayLogin(roles) {
+		return roles, ""
+	}
+	if tenant == "" {
+		tenant = "(none)"
 	}
 	return slices.DeleteFunc(slices.Clone(roles), func(r string) bool {
 		return r == c.cfg.LoginRole || r == c.cfg.AdminRole
-	})
+	}), tenant
 }
 
 func (c *client) mayLogin(roles []string) bool {
