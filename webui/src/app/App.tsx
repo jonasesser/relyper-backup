@@ -61,6 +61,7 @@ import { OperationStatus } from "../../gen/ts/v1/operations_pb";
 import { useResourceStatus } from "../api/resourceStatus";
 import LogoSvg from "../../assets/relyper-logo.svg"; // relyper: branding
 import { AboutModal } from "../relyper/about/AboutModal"; // relyper
+import { ReadOnlyBadge } from "../relyper/identity/ReadOnlyBadge"; // relyper
 import { keyBy } from "../lib/util";
 import { Code } from "@connectrpc/connect";
 import { LoginModal } from "../features/auth/LoginModal";
@@ -961,6 +962,7 @@ export const App: React.FC = () => {
         </Flex>
 
         <Flex ml="auto" align="center" gap={4}>
+          <ReadOnlyBadge /> {/* relyper: roles for Relyper Identity users */}
           <Text
             fontSize="xs"
             color="whiteAlpha.600"

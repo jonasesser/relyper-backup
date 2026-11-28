@@ -51,13 +51,13 @@ Keep this list current; it is the merge checklist.
 
 | File | Change | Issue |
 |---|---|---|
-| `cmd/backrest/backrest.go` | registers `/healthz` and the `relyper.v1.RelyperSftp` service; calls `mcpapi.Setup` and mounts its routes (`/mcp`, OAuth, `relyper.v1.RelyperMcp`) via an extra variadic parameter of `newRootMux` | #11, #12, #17 |
+| `cmd/backrest/backrest.go` | registers `/healthz` and the `relyper.v1.RelyperSftp` service; calls `mcpapi.Setup` and mounts its routes (`/mcp`, OAuth, `relyper.v1.RelyperMcp`) via an extra variadic parameter of `newRootMux`; wraps the Backrest service and the authenticated routes with the read-only role gate (`internal/relyper/roles`) | #11, #12, #17, #32 |
 | `internal/api/backresthandler.go` | `SetupSftp` no longer adds host keys with `ssh-keyscan` (trust on first use) | #12 |
 | `webui/src/api/client.ts` | `transport` exported for the Relyper clients | #12 |
 | `webui/src/test/setup.tsx` | global mock for `@/relyper/api` | #12 |
 | `webui/src/features/repositories/AddRepoModal.tsx` | renders `SftpDiagnostics`; texts no longer promise automatic host key scanning; product name | #12, #14 |
 | `webui/src/features/settings/SettingsModal.tsx` | product name in one hint; Relyper Identity (OIDC) status card in the Authentication section | #14, #30 |
-| `webui/src/app/App.tsx` | Relyper logo, version opens the About dialog; sidebar entries and routes `/mcp` (MCP page) and `/infra` (Infrastructure page); backup health summary above the dashboard | #14, #17, #22, #28 |
+| `webui/src/app/App.tsx` | Relyper logo, version opens the About dialog; sidebar entries and routes `/mcp` (MCP page) and `/infra` (Infrastructure page); backup health summary above the dashboard; "Read-only" header badge | #14, #17, #22, #28, #32 |
 | `webui/index.html` | title and favicon | #14 |
 | `internal/auth/auth.go`, `internal/auth/middleware.go` | `SetExternalVerifier`: bearer tokens of Relyper Identity sessions are checked before the upstream JWT | #18 |
 | `webui/src/features/auth/LoginModal.tsx` | renders `RelyperLogin` (sign-in with Relyper Identity) above the password fields | #18 |

@@ -86,16 +86,26 @@ If no local user exists, the page offers only the provider.
 
 | Who | Web UI | Approve MCP requests, create/revoke MCP tokens |
 |---|---|---|
-| Provider user with `backup_user` | yes | no |
-| Provider user with `backup_admin` | yes | yes |
-| Local user (emergency access) | yes | yes |
+| Provider user with `backup_user` | read-only | no |
+| Provider user with `backup_admin` | full | yes |
+| Local user (emergency access) | full | yes |
 | Provider user without either role | refused | – |
+
+Read-only means: plans, repositories, snapshots, operations, logs, the
+dashboard and the Infrastructure page are visible. Changing the
+configuration, starting backups, restores, forget/prune/check, downloads,
+`RunCommand`, SFTP host key trust and every Infrastructure action are
+refused on the server with "read-only access". The configuration a
+read-only user receives has its secrets redacted (repository passwords,
+environment values, passwords in URIs and flags, password hashes, hook
+contents, the multihost key). The header shows a "Read-only" badge. Routes
+that are not known to be read-only are refused (deny by default).
 
 ## Limits
 
-- The Backrest pages themselves have no roles yet: a `backup_user` can do
-  everything the web UI offers (plans, repositories, restore). Only the MCP
-  approvals and token management are restricted to admins.
+- There are two roles (view and full). Finer permissions (manage plans,
+  run backups, restore, delete) are not split yet.
+- Local users always have full rights.
 - Signing out removes the session from the browser. A copied session token
   keeps working until it expires (`RELYPER_OIDC_SESSION_HOURS`). Removing a
   role at the provider takes effect at the next sign-in. Raising the login

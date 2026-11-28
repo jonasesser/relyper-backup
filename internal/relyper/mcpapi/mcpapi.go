@@ -33,6 +33,7 @@ import (
 	"github.com/garethgeorge/backrest/internal/relyper/mcp"
 	"github.com/garethgeorge/backrest/internal/relyper/mcpauth"
 	"github.com/garethgeorge/backrest/internal/relyper/portal"
+	"github.com/garethgeorge/backrest/internal/relyper/roles"
 	"go.uber.org/zap"
 )
 
@@ -55,6 +56,9 @@ type Deps struct {
 type Routes struct {
 	Authed   map[string]http.Handler
 	Unauthed map[string]http.Handler
+	// Roles limits users signed in through Relyper Identity without the
+	// admin role to read-only access on all authenticated routes.
+	Roles *roles.Policy
 }
 
 // Setup creates the token store, approval store, audit log, MCP server and
@@ -163,6 +167,7 @@ func Setup(d Deps) (*Routes, error) {
 	routes := &Routes{
 		Authed:   map[string]http.Handler{path: handler},
 		Unauthed: oauth.Routes(),
+		Roles:    &roles.Policy{IsAdmin: idp.IsAdmin},
 	}
 	if inf != nil {
 		routes.Authed[infraapi.Prefix] = &infraapi.Handler{Infra: inf, PlanExists: func(id string) bool {
@@ -179,6 +184,7 @@ func Setup(d Deps) (*Routes, error) {
 			routes.Unauthed[p] = hd
 		}
 	}
+	routes.Authed[roles.PathMe] = routes.Roles.MeHandler()
 	routes.Authed[identity.PathSetup] = identity.SetupHandler(identity.SetupOptions{
 		Config: idCfg, ConfigErr: idErr, Service: idp, BaseURL: mcpauth.BaseURL,
 		LocalAuth: func() bool { return authEnabled(d.Config) }, Getenv: os.Getenv,

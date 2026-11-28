@@ -44,7 +44,7 @@ https://github.com/garethgeorge/backrest/security.
 | Attacker | Impact today | Mitigation |
 |---|---|---|
 | Anyone on the network before the first user exists | Full control | Create the user at once; do not publish the port before. |
-| Stolen or guessed password, stolen JWT | Full control: read all backups (snapshot browser, downloads), run restores, delete snapshots, change plans, **run hook commands (shell inside the container)** and arbitrary restic commands | Strong unique password, TLS, keep the UI off the public internet or behind an additional auth layer (VPN, SSO proxy). Roles are planned. |
+| Stolen or guessed password, stolen JWT | Full control: read all backups (snapshot browser, downloads), run restores, delete snapshots, change plans, **run hook commands (shell inside the container)** and arbitrary restic commands | Strong unique password, TLS, keep the UI off the public internet or behind an additional auth layer (VPN, SSO proxy). Give Relyper Identity users who only need to look the read-only role `backup_user`. |
 | Compromised Relyper Backup container | Reads mounted sources; with the repository credentials it can **delete every remote backup it can reach** (restic `forget`/`prune`, or deleting files over SFTP) | See "Residual risks". |
 | Man-in-the-middle on the SFTP connection | Prevented by host key verification; a changed key stops all connections until a human decides. | Compare fingerprints with the provider. |
 | Malicious content in backed-up files, logs, metadata | Shown in the UI as text; passed to AI clients via MCP. | Treat as untrusted input; never execute it; MCP tool descriptions and server instructions mark it as untrusted data. |
@@ -66,7 +66,7 @@ https://github.com/garethgeorge/backrest/security.
     on the roadmap as an evaluation item.
 - **Plaintext secrets in `config.json`.** Anyone who can read `/config` can
   read all backups. Encrypted secret storage is planned.
-- **No roles in the web UI.** Viewing status and deleting backups need the same login, and every web UI user can create MCP tokens and approve MCP requests. MCP credentials themselves are scoped.
+- **Two roles only.** Users signed in through Relyper Identity with `backup_user` are read-only (server-side, deny by default, secrets redacted); `backup_admin` and local users have full rights. Finer roles (run backups but not delete, …) do not exist yet. MCP credentials themselves are scoped.
 - **MCP exposure.** Connecting claude.ai or ChatGPT requires the instance to be reachable from the internet. The OAuth consent page accepts the web UI password; use a strong password. A repository password given to `create_repository` passes through the AI provider.
 - **Docker access.** Mounting the socket gives root on the host, even with
   `:ro`. Application-aware backup needs more than read access: it runs the

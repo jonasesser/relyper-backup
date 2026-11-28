@@ -33,6 +33,7 @@ import (
 	"github.com/garethgeorge/backrest/internal/orchestrator"
 	"github.com/garethgeorge/backrest/internal/relyper/health"
 	"github.com/garethgeorge/backrest/internal/relyper/mcpapi"
+	"github.com/garethgeorge/backrest/internal/relyper/roles"
 	"github.com/garethgeorge/backrest/internal/relyper/sftpapi"
 	"github.com/garethgeorge/backrest/internal/resticinstaller"
 	"github.com/garethgeorge/backrest/webui"
@@ -279,6 +280,14 @@ func newRootMux(
 ) *http.ServeMux {
 	// Authenticated routes
 	authedMux := http.NewServeMux()
+	// relyper: read-only users get the configuration without secrets
+	var policy *roles.Policy
+	for _, rr := range relyperRoutes {
+		if rr != nil && rr.Roles != nil {
+			policy = rr.Roles
+			apiBackrestHandler = &roles.Backrest{BackrestHandler: apiBackrestHandler, Policy: policy}
+		}
+	}
 	backrestPath, backrestHandler := v1connect.NewBackrestHandler(apiBackrestHandler)
 	authedMux.Handle(backrestPath, backrestHandler)
 	syncStatePath, syncStateHandlerUnauthed := v1syncconnect.NewBackrestSyncStateServiceHandler(syncStateHandler)
@@ -322,6 +331,9 @@ func newRootMux(
 		// Check if the mux can provide a handler for the authenticated routes
 		handler, pattern = authedMux.Handler(r)
 		if pattern != "" {
+			if policy != nil {
+				handler = policy.Gate(handler) // relyper: roles for Relyper Identity users
+			}
 			auth.RequireAuthentication(handler, authenticator).ServeHTTP(w, r)
 			return
 		}

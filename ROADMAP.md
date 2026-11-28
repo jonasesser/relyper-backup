@@ -89,7 +89,7 @@ Details: `MCP.md`.
 
 | Item | Status | Notes |
 |---|---|---|
-| Relyper Identity (OIDC) | done | #18, `IDENTITY.md`; roles for the Backrest pages still open |
+| Relyper Identity (OIDC) | done | #18, `IDENTITY.md`; read-only role for the Backrest pages #32 |
 | Infrastructure page in the web UI | done | #22 |
 | Compose variant with Docker socket proxy | done | `docker-compose.apps.yml` |
 | Easypanel template | open | Needs a real Easypanel server to verify paths |
@@ -132,5 +132,5 @@ What `docs/CONCEPT.md` asks for and is not (fully) built yet, by section:
 | 11 Setup wizard | One plan per app; no "whole environment / whole project" selection, no storage estimate, defaults fixed at daily 02:30 and 7/4/6 (editable on the plan page). |
 | 12 Dashboard | Health summary (#28) and notifications for success, failure, low storage, overdue plans (#27). |
 | 13 Disaster recovery | Recovery report with images, paths, test results and restic commands; no guided restore workflows, restoration order, network dependencies or bootstrap tool. |
-| 15 Security | Roles only for Relyper Identity users on MCP functions; Backrest pages have no roles. Secrets in `config.json` are not encrypted (upstream). |
+| 15 Security | Two roles for Relyper Identity users (read-only and full, #32); no finer permissions. Secrets in `config.json` are not encrypted (upstream). |
 | 17 Deployment | No Easypanel template yet; MCP endpoint path is fixed at `/mcp`. |
