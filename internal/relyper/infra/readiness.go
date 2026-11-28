@@ -45,6 +45,8 @@ type RepoReadiness struct {
 	LastCheck string `json:"last_check,omitempty"`
 	CheckOK   bool   `json:"check_ok"`
 	Detail    string `json:"detail,omitempty"`
+	// Storage is the last measured free space, if the backend reports it.
+	Storage *StorageInfo `json:"storage,omitempty"`
 }
 
 // ReadinessReport is the overall recovery readiness.
@@ -82,6 +84,9 @@ func repoType(uri string) string {
 func (s *Service) repoReadiness(cfg *v1.Config, r *v1.Repo, now time.Time) RepoReadiness {
 	rr := RepoReadiness{Repo: r.Id, Location: RedactURI(r.Uri), Type: repoType(r.Uri)}
 	rr.Offsite = rr.Type != "local"
+	if st, ok := s.Storage(r.Id); ok {
+		rr.Storage = &st
+	}
 	if s.d.OpLog == nil || r.Guid == "" {
 		return rr
 	}
@@ -180,6 +185,9 @@ func (s *Service) Readiness(ctx context.Context) (*ReadinessReport, error) {
 					add("repository_check:"+p.Repo, "warning", "the last repository check is older than 35 days")
 				default:
 					add("repository_check:"+p.Repo, "ok", "last check "+rr.LastCheck)
+				}
+				if rr.Storage != nil && rr.Storage.Low {
+					add("storage:"+p.Repo, "warning", fmt.Sprintf("only %s of %s free on the backup storage", humanSize(rr.Storage.FreeBytes), humanSize(rr.Storage.TotalBytes)))
 				}
 				if !rr.Offsite {
 					add("offsite:"+p.Repo, "warning", "the repository is on a local path; a copy on other hardware or at another site is missing")

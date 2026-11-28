@@ -54,16 +54,23 @@ type Settings struct {
 	PathMap           []discovery.PathMapping
 	DockerEndpoint    string
 	DockerConfigError string
+	// NotifySuccess also reports successful backups (RELYPER_NOTIFY_SUCCESS).
+	NotifySuccess bool
+	// LowStoragePercent: notify when less free space is left (default 10).
+	LowStoragePercent int
+	// KnownHostsPath is Relyper Backup's SSH known_hosts (SFTP free space).
+	KnownHostsPath string
 }
 
 // SettingsFromEnv reads RELYPER_* variables.
 func SettingsFromEnv(dataDir string) Settings {
 	s := Settings{
-		DumpDir:        filepath.Join(dataDir, "dumps"),
-		CoverageMaxAge: 48 * time.Hour,
-		VerifyInterval: 7 * 24 * time.Hour,
-		DumpCommand:    "relyper-dbdump",
-		DockerEndpoint: docker.EndpointFromEnv(),
+		DumpDir:           filepath.Join(dataDir, "dumps"),
+		CoverageMaxAge:    48 * time.Hour,
+		VerifyInterval:    7 * 24 * time.Hour,
+		DumpCommand:       "relyper-dbdump",
+		LowStoragePercent: 10,
+		DockerEndpoint:    docker.EndpointFromEnv(),
 	}
 	if v := os.Getenv("RELYPER_DUMP_DIR"); v != "" && filepath.IsAbs(v) {
 		s.DumpDir = filepath.Clean(v)
@@ -77,6 +84,10 @@ func SettingsFromEnv(dataDir string) Settings {
 		}
 	}
 	s.NotifyURLs = strings.Fields(os.Getenv("RELYPER_NOTIFY_URLS"))
+	s.NotifySuccess, _ = strconv.ParseBool(os.Getenv("RELYPER_NOTIFY_SUCCESS"))
+	if n, err := strconv.Atoi(os.Getenv("RELYPER_LOW_STORAGE_PERCENT")); err == nil && n >= 0 && n < 100 {
+		s.LowStoragePercent = n
+	}
 	if v := os.Getenv("RELYPER_DUMP_COMMAND"); v != "" {
 		s.DumpCommand = v
 	}
@@ -101,6 +112,7 @@ type Service struct {
 	busy     map[string]bool // app or plan IDs with a running verification
 	lastNote map[string]time.Time
 	notified map[string]string // app ID -> coverage state last notified
+	storage  map[string]StorageInfo
 }
 
 // New creates the service. Docker is optional: without it, discovery reports
@@ -110,7 +122,7 @@ func New(d Deps, s Settings) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	svc := &Service{d: d, s: s, store: st, busy: map[string]bool{}, lastNote: map[string]time.Time{}, notified: map[string]string{}}
+	svc := &Service{d: d, s: s, store: st, busy: map[string]bool{}, lastNote: map[string]time.Time{}, notified: map[string]string{}, storage: map[string]StorageInfo{}}
 	if c, err := docker.New(s.DockerEndpoint); err == nil {
 		svc.docker = c
 	} else {

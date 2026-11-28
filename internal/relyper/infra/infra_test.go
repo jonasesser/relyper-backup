@@ -127,3 +127,39 @@ func TestProtection(t *testing.T) {
 		}
 	}
 }
+
+func TestOperationMessage(t *testing.T) {
+	failed := &v1.Operation{Id: 1, PlanId: "app-shop", RepoId: "hosteurope", Status: v1.OperationStatus_STATUS_ERROR, DisplayMessage: "repository locked\nmore", Op: &v1.Operation_OperationBackup{OperationBackup: &v1.OperationBackup{}}}
+	if subj, body := operationMessage(failed, false); subj != "Relyper Backup: backup of plan app-shop (hosteurope) FAILED" || body != "repository locked" {
+		t.Errorf("%q %q", subj, body)
+	}
+	ok := &v1.Operation{Id: 2, PlanId: "app-shop", RepoId: "r", Status: v1.OperationStatus_STATUS_SUCCESS, Op: &v1.Operation_OperationBackup{OperationBackup: &v1.OperationBackup{}}}
+	if subj, _ := operationMessage(ok, false); subj != "" {
+		t.Error("success reported although disabled")
+	}
+	if subj, _ := operationMessage(ok, true); subj == "" {
+		t.Error("success not reported")
+	}
+	check := &v1.Operation{Id: 3, PlanId: "_system_", RepoId: "r", Status: v1.OperationStatus_STATUS_ERROR, Op: &v1.Operation_OperationCheck{OperationCheck: &v1.OperationCheck{}}}
+	if subj, _ := operationMessage(check, false); subj != "Relyper Backup: check of repository r FAILED" {
+		t.Errorf("check: %q", subj)
+	}
+}
+
+func TestStorageTargets(t *testing.T) {
+	r := &v1.Repo{Uri: "sftp:u123@storage.example:/backups/relyper", Flags: []string{"--option=sftp.args=-i /config/.backrest-ssh/id_ed25519 -p 2222 -o BatchMode=yes"}}
+	host, port, user, dir, id, ok := sftpTarget(r)
+	if !ok || host != "storage.example" || port != 2222 || user != "u123" || dir != "/backups/relyper" || id != "/config/.backrest-ssh/id_ed25519" {
+		t.Errorf("%s %d %s %s %s %v", host, port, user, dir, id, ok)
+	}
+	if h, p, _, d, _, ok := sftpTarget(&v1.Repo{Uri: "sftp://u@h.example:2200//abs/repo"}); !ok || h != "h.example" || p != 2200 || d != "/abs/repo" {
+		t.Errorf("url form: %s %d %s", h, p, d)
+	}
+	if localRepoPath("/mnt/repo") != "/mnt/repo" || localRepoPath("local:/x/y") != "/x/y" || localRepoPath("s3:bucket") != "" {
+		t.Error("localRepoPath")
+	}
+	free, total, err := statfs(t.TempDir() + "/not/yet")
+	if err != nil || total <= 0 || free < 0 {
+		t.Errorf("statfs: %d %d %v", free, total, err)
+	}
+}

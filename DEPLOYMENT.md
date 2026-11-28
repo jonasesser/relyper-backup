@@ -89,6 +89,8 @@ configurations and documentation keep working.
 | `RELYPER_COVERAGE_MAX_AGE_HOURS` | `48` | A snapshot older than this counts as stale. |
 | `RELYPER_VERIFY_INTERVAL_DAYS` | `7` | Automatic database and file restore tests; `0` turns them off. |
 | `RELYPER_NOTIFY_URLS` | unset | Notification targets as [shoutrrr URLs](https://shoutrrr.nickfedor.com/), separated by spaces. |
+| `RELYPER_NOTIFY_SUCCESS` | `false` | Also notify about successful backups. |
+| `RELYPER_LOW_STORAGE_PERCENT` | `10` | Notify when the backup storage has less free space (0 = off). |
 | `RELYPER_SELF_CONTAINER` | the hostname | Name or ID of Relyper Backup's own container, excluded from discovery. |
 | `RELYPER_PUBLIC_URL` | unset | Public HTTPS address, e.g. `https://backup.example.com`. Used in the OAuth metadata of the MCP server; without it the address is derived from the request headers. |
 
@@ -196,10 +198,25 @@ Set `RELYPER_NOTIFY_URLS` to one or more
 [shoutrrr](https://shoutrrr.nickfedor.com/) URLs, separated by spaces, for
 example `ntfy://ntfy.sh/<topic>`, `telegram://<token>@telegram?chats=<id>`
 or `smtp://user:pass@host:587/?from=a@example.com&to=b@example.com`.
-Relyper Backup sends a message when the coverage of an app with a plan
-becomes stale, failing or unprotected, when it is protected again, and when
-a database or file restore test fails. After a restart an open problem is
-reported once more. The URLs contain
+Relyper Backup sends a message when
+
+- a backup, repository check, prune, forget or restore fails, or a backup
+  finishes with warnings (for every plan and repository, as it happens);
+- a backup succeeds – only with `RELYPER_NOTIFY_SUCCESS=true`;
+- a scheduled plan is overdue (latest snapshot older than
+  `RELYPER_COVERAGE_MAX_AGE_HOURS`), and when it is up to date again;
+- the coverage of an app with a plan becomes stale, failing or unprotected,
+  and when it is protected again;
+- a database or file restore test fails;
+- the backup storage has less than `RELYPER_LOW_STORAGE_PERCENT` (default
+  10) percent free, and when it has enough again. Free space is measured
+  hourly for local repositories and daily for SFTP repositories with a key
+  (the server must support the statvfs extension); other backends do not
+  report free space.
+
+The same subject is sent at most once per hour. After a restart an open
+problem is reported once more. Upstream's per-plan hooks (Discord, Slack,
+Gotify, Healthchecks, …) keep working in addition. The URLs contain
 secrets; they are never shown in the UI or logs.
 
 ## Privileged options and their risk

@@ -121,7 +121,7 @@ func Setup(d Deps) (*Routes, error) {
 
 	// Application-aware backup: discovery, coverage, app plans, database
 	// dumps and verification. Docker is optional.
-	inf, err := infra.New(infra.Deps{Config: d.Config, Orchestrator: d.Orchestrator, OpLog: d.OpLog, Audit: auditLog, DataDir: dir}, infra.SettingsFromEnv(dir))
+	inf, err := infra.New(infra.Deps{Config: d.Config, Orchestrator: d.Orchestrator, OpLog: d.OpLog, Audit: auditLog, DataDir: dir}, infraSettings(dir, d.SSHDir))
 	if err != nil {
 		zap.S().Errorw("Relyper infrastructure features disabled", "error", err)
 		inf = nil
@@ -355,4 +355,12 @@ func (h *Handler) ListAuditEvents(ctx context.Context, req *connect.Request[rely
 		})
 	}
 	return connect.NewResponse(out), nil
+}
+
+func infraSettings(dataDir, sshDir string) infra.Settings {
+	st := infra.SettingsFromEnv(dataDir)
+	if sshDir != "" {
+		st.KnownHostsPath = filepath.Join(sshDir, "known_hosts")
+	}
+	return st
 }

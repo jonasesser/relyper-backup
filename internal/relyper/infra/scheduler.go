@@ -13,9 +13,7 @@ import (
 // sends a notification when the coverage of an app gets worse than
 // "protected". A failure never touches backups.
 func (s *Service) Run(ctx context.Context) {
-	if s.s.VerifyInterval <= 0 && len(s.s.NotifyURLs) == 0 {
-		return
-	}
+	go s.watchOperations(ctx)
 	// Give the server time to start before the first round.
 	select {
 	case <-ctx.Done():
@@ -45,6 +43,10 @@ func (s *Service) tick(ctx context.Context) {
 		return
 	}
 	now := time.Now()
+	s.checkStorage(ctx, cfg, now)
+	if len(s.s.NotifyURLs) > 0 {
+		s.checkOverduePlans(cfg, now)
+	}
 	if s.s.VerifyInterval > 0 {
 		for _, p := range cfg.Plans {
 			if p.GetSchedule().GetDisabled() || s.planRun(cfg, p.Id).snapshot == nil {
