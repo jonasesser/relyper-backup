@@ -19,16 +19,16 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-
-	"github.com/garethgeorge/backrest/internal/env"
 )
 
 // TagsFileName is the file in the config directory that holds the tags.
 const TagsFileName = "relyper-tags.json"
 
-// TagsPathFromEnv is relyper-tags.json next to the Backrest config file.
-func TagsPathFromEnv() string {
-	return filepath.Join(filepath.Dir(env.ConfigFilePath()), TagsFileName)
+// TagsPath is relyper-tags.json next to the Backrest config file. The
+// caller passes env.ConfigFilePath(): this package is also built into the
+// Docker guard image, which holds only internal/relyper.
+func TagsPath(configFile string) string {
+	return filepath.Join(filepath.Dir(configFile), TagsFileName)
 }
 
 var tagRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,39}$`)

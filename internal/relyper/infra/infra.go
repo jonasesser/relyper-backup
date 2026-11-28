@@ -27,6 +27,7 @@ import (
 
 	v1 "github.com/garethgeorge/backrest/gen/go/v1"
 	"github.com/garethgeorge/backrest/internal/config"
+	"github.com/garethgeorge/backrest/internal/env"
 	"github.com/garethgeorge/backrest/internal/oplog"
 	"github.com/garethgeorge/backrest/internal/orchestrator"
 	"github.com/garethgeorge/backrest/internal/relyper/audit"
@@ -98,7 +99,7 @@ func SettingsFromEnv(dataDir string) Settings {
 	if v := os.Getenv("RELYPER_RESTORE_DIR"); v != "" && filepath.IsAbs(v) {
 		s.RestoreDir = filepath.Clean(v)
 	}
-	s.TagsPath = discovery.TagsPathFromEnv()
+	s.TagsPath = discovery.TagsPath(env.ConfigFilePath())
 	if v := os.Getenv("RELYPER_DUMP_COMMAND"); v != "" {
 		s.DumpCommand = v
 	}

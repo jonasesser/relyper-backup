@@ -16,6 +16,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/garethgeorge/backrest/internal/env"
 	"github.com/garethgeorge/backrest/internal/relyper/dbdump"
 	"github.com/garethgeorge/backrest/internal/relyper/discovery"
 	"github.com/garethgeorge/backrest/internal/relyper/docker"
@@ -56,7 +57,7 @@ func run(dir, appID string, timeout time.Duration) error {
 		return fmt.Errorf("docker not available at %s: %s", inv.Docker.Endpoint, inv.Docker.Error)
 	}
 	// Tag groups (group:<tag>) are formed from the tags next to the config.
-	if tags, err := discovery.LoadTags(discovery.TagsPathFromEnv()); err == nil {
+	if tags, err := discovery.LoadTags(discovery.TagsPath(env.ConfigFilePath())); err == nil {
 		inv.ApplyTags(tags)
 	}
 	app := inv.Find(appID)

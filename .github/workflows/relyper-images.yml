@@ -1,0 +1,23 @@
+# Relyper-owned: builds the Relyper container images on every push so a
+# broken Dockerfile shows up before a deployment pulls main.
+name: Relyper images
+
+on:
+  push:
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+  workflow_dispatch:
+
+jobs:
+  docker-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build Dockerfile.docker-guard
+        run: docker buildx build --load -f Dockerfile.docker-guard -t relyper-docker-guard:ci .

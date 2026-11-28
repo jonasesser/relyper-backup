@@ -44,6 +44,7 @@ such line carries a `relyper:` comment so it is easy to find during merges
 | `webui/assets/relyper-*` | logo, icon, favicon |
 | `Dockerfile`, `docker-compose.yml`, `.dockerignore` | source build of the single image |
 | `Dockerfile.docker-guard`, `cmd/relyper-docker-guard/` | Relyper Docker guard (only holder of the Docker socket) |
+| `.github/workflows/relyper-images.yml` | builds `Dockerfile.docker-guard` on every push (the guard image holds only `internal/relyper`, see `cmd/relyper-docker-guard/deps_test.go`) |
 | `*.md` at the root (except `LICENSE`) | Relyper documentation |
 
 ### Upstream files changed (hook points)
