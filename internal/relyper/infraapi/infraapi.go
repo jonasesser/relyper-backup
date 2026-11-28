@@ -77,6 +77,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		rep, err := h.Infra.Coverage(ctx)
 		respond(w, rep, err)
+	case get && route == "overview":
+		o, err := h.Infra.Overview(ctx)
+		respond(w, o, err)
 	case get && route == "readiness":
 		rep, err := h.Infra.Readiness(ctx)
 		respond(w, rep, err)

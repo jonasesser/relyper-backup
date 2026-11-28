@@ -97,6 +97,9 @@ const spin = keyframes`
 
 const McpPage = React.lazy(() => import("../relyper/mcp/McpPage")); // relyper
 const InfraPage = React.lazy(() => import("../relyper/infra/InfraPage")); // relyper
+const HealthOverview = React.lazy(
+  () => import("../relyper/infra/HealthOverview"),
+); // relyper
 const SummaryDashboard = React.lazy(() =>
   import("../features/dashboard/SummaryDashboard").then((m) => ({
     default: m.SummaryDashboard,
@@ -1005,6 +1008,7 @@ export const App: React.FC = () => {
                     <MainContentAreaTemplate
                       breadcrumbs={[{ title: m.app_breadcrumb_summary() }]}
                     >
+                      <HealthOverview /> {/* relyper: backup health */}
                       <SummaryDashboard />
                     </MainContentAreaTemplate>
                   }

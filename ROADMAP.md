@@ -93,7 +93,7 @@ Details: `MCP.md`.
 | Infrastructure page in the web UI | done | #22 |
 | Compose variant with Docker socket proxy | done | `docker-compose.apps.yml` |
 | Easypanel template | open | Needs a real Easypanel server to verify paths |
-| Dashboard redesign | open | |
+| Dashboard redesign | done | #28 – backup health summary above the upstream dashboard |
 
 ## Phase 7 – Backup as a service for customers (in progress)
 
@@ -119,14 +119,14 @@ What `docs/CONCEPT.md` asks for and is not (fully) built yet, by section:
 | Section | Gap |
 |---|---|
 | 4 UI | Navigation has Dashboard, Infrastructure (= Applications), Plans, Repositories, MCP Integration, Settings. No separate Snapshots, Restore and Activity pages; snapshots and restores live on the plan and repository pages (upstream). |
-| 5 MCP | `discover_apps` covers `list_docker_containers`, `list_docker_services`, `list_docker_volumes`, `list_easypanel_projects` and `list_detected_databases`; `get_recovery_readiness` covers `get_disaster_recovery_status`; `dump_app_databases` covers `run_database_backup`. Tools under the exact concept names do not exist. `stop_container` / `restart_container` are not offered (read-only towards production). |
-| 6 Docker | Not reported: networks, restart policies, resource limits, dependencies between services. Data is classified as data, database, live database files; no separate configuration / temporary / cache classes. |
+| 5 MCP | All concept tools exist (#26). `stop_container`, `restart_container` and `overwrite_existing_files` are restricted and need approval. |
+| 6 Docker | Networks, ports, restart policies, resource limits, dependencies and data classes are reported (#26). |
 | 7 Easypanel | Detected from Docker metadata and paths only, not verified on a real server; no Easypanel API; domains, routing, environment variables and certificates are not read. |
 | 8 Databases | Whole-server dumps only (pg_dumpall, all MySQL/MariaDB databases); no per-database selection; no explicit connection validation step; version compatibility is reported only as the image used for the dump. MongoDB is supported in addition. |
-| 9 Coverage | States differ from the concept's names (protected, stale, failing, not in snapshot, unprotected, not reachable, …); "Restore not verified" is part of Readiness. No filtering. |
+| 9 Coverage | Concept protection states and filters exist (#26). Item states stay more detailed underneath. |
 | 10 Repositories | No guided repository wizard beyond the upstream form and the SFTP diagnostics; Google Drive / Dropbox only via rclone; Host Europe not tested. |
 | 11 Setup wizard | One plan per app; no "whole environment / whole project" selection, no storage estimate, defaults fixed at daily 02:30 and 7/4/6 (editable on the plan page). |
-| 12 Dashboard | Upstream dashboard plus the Infrastructure summary; no combined health dashboard. Notifications only for coverage problems and failed restore tests (not success, low storage or failed checks). |
+| 12 Dashboard | Health summary (#28) and notifications for success, failure, low storage, overdue plans (#27). |
 | 13 Disaster recovery | Recovery report with images, paths, test results and restic commands; no guided restore workflows, restoration order, network dependencies or bootstrap tool. |
 | 15 Security | Roles only for Relyper Identity users on MCP functions; Backrest pages have no roles. Secrets in `config.json` are not encrypted (upstream). |
 | 17 Deployment | No Easypanel template yet; MCP endpoint path is fixed at `/mcp`. |

@@ -72,6 +72,47 @@ export type CoverageReport = {
 
 export type Check = { name: string; status: string; detail: string };
 
+export type StorageInfo = {
+  free_bytes: number;
+  total_bytes: number;
+  checked_at: string;
+  source: string;
+  low: boolean;
+};
+
+export type OpSummary = {
+  id: number;
+  kind: string;
+  plan?: string;
+  repo: string;
+  time: string;
+  message?: string;
+};
+
+export type Overview = {
+  generated_at: string;
+  level: string;
+  docker_available: boolean;
+  apps: Record<string, number>;
+  apps_total: number;
+  failed_24h: OpSummary[];
+  failed_count_24h: number;
+  running: OpSummary[];
+  last_successful_backup?: OpSummary;
+  last_successful_check?: OpSummary;
+  last_verified_database_restore?: { subject: string; time: string };
+  last_verified_file_restore?: { subject: string; time: string };
+  repos: {
+    repo: string;
+    location: string;
+    type: string;
+    offsite: boolean;
+    storage?: StorageInfo;
+  }[];
+  attention?: string[];
+  backups_24h: Record<string, number>;
+};
+
 export type ReadinessReport = {
   generated_at: string;
   level: string;
@@ -84,6 +125,7 @@ export type ReadinessReport = {
         offsite: boolean;
         last_check?: string;
         check_ok: boolean;
+        storage?: StorageInfo;
       }[]
     | null;
 };
@@ -173,6 +215,7 @@ export const infraApi = {
     call<CoverageReport>("coverage" + (refresh ? "?refresh=1" : "")),
   readiness: () => call<ReadinessReport>("readiness"),
   inventory: () => call<Inventory>("inventory"),
+  overview: () => call<Overview>("overview"),
   results: (app: string, plan: string) =>
     call<Results>(
       `results?app=${encodeURIComponent(app)}&plan=${encodeURIComponent(plan)}`,

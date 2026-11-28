@@ -86,6 +86,12 @@ func (s *Service) repoReadiness(cfg *v1.Config, r *v1.Repo, now time.Time) RepoR
 	rr.Offsite = rr.Type != "local"
 	if st, ok := s.Storage(r.Id); ok {
 		rr.Storage = &st
+	} else if p := localRepoPath(r.Uri); rr.Type == "local" && p != "" {
+		// Local storage is cheap to measure; do not wait for the first round.
+		if free, total, err := statfs(p); err == nil && total > 0 {
+			rr.Storage = &StorageInfo{FreeBytes: free, TotalBytes: total, CheckedAt: fmtTime(now), Source: "filesystem",
+				Low: s.s.LowStoragePercent > 0 && float64(free) < float64(total)*float64(s.s.LowStoragePercent)/100}
+		}
 	}
 	if s.d.OpLog == nil || r.Guid == "" {
 		return rr

@@ -57,7 +57,7 @@ Keep this list current; it is the merge checklist.
 | `webui/src/test/setup.tsx` | global mock for `@/relyper/api` | #12 |
 | `webui/src/features/repositories/AddRepoModal.tsx` | renders `SftpDiagnostics`; texts no longer promise automatic host key scanning; product name | #12, #14 |
 | `webui/src/features/settings/SettingsModal.tsx` | product name in one hint | #14 |
-| `webui/src/app/App.tsx` | Relyper logo, version opens the About dialog; sidebar entries and routes `/mcp` (MCP page) and `/infra` (Infrastructure page) | #14, #17, #22 |
+| `webui/src/app/App.tsx` | Relyper logo, version opens the About dialog; sidebar entries and routes `/mcp` (MCP page) and `/infra` (Infrastructure page); backup health summary above the dashboard | #14, #17, #22, #28 |
 | `webui/index.html` | title and favicon | #14 |
 | `internal/auth/auth.go`, `internal/auth/middleware.go` | `SetExternalVerifier`: bearer tokens of Relyper Identity sessions are checked before the upstream JWT | #18 |
 | `webui/src/features/auth/LoginModal.tsx` | renders `RelyperLogin` (sign-in with Relyper Identity) above the password fields | #18 |

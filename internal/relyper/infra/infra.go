@@ -282,3 +282,25 @@ func errString(err error) string {
 	}
 	return fmt.Sprint(err)
 }
+
+// lastVerified returns the newest successful database and file restore
+// tests across all apps and plans.
+func (s *store) lastVerified() (db, files *VerifiedRestore) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for app, list := range s.st.Verifications {
+		for _, r := range list {
+			if r.OK && (db == nil || r.Time > db.Time) {
+				db = &VerifiedRestore{Subject: app, Time: r.Time}
+			}
+		}
+	}
+	for plan, list := range s.st.RestoreTests {
+		for _, r := range list {
+			if r.OK && (files == nil || r.Time > files.Time) {
+				files = &VerifiedRestore{Subject: plan, Time: r.Time}
+			}
+		}
+	}
+	return db, files
+}
