@@ -442,7 +442,12 @@ export const FtpRepoSection = ({
             <Input
               value={settings.user}
               onChange={(e) => update({ user: e.target.value })}
+              // Keep the browser from filling in the Relyper login here.
+              name="relyper-ftp-user"
               autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore="true"
+              data-form-type="other"
               data-testid="relyper-ftp-user"
             />
           </Field>
@@ -461,7 +466,11 @@ export const FtpRepoSection = ({
               value={password}
               onChange={(e) => onPassword(e.target.value)}
               placeholder={hasStoredPassword ? "••••••••" : ""}
+              name="relyper-ftp-password"
               autoComplete="new-password"
+              data-lpignore="true"
+              data-1p-ignore="true"
+              data-form-type="other"
               data-testid="relyper-ftp-password"
             />
           </Field>

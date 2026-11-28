@@ -9,7 +9,9 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"fmt"
 	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -236,5 +238,64 @@ func TestE2E(t *testing.T) {
 	}
 	if !r.OK || r.Repository != RepoMissing {
 		t.Fatalf("result %+v", r.Error)
+	}
+}
+
+// fakeFTP answers greeting, USER and PASS like a minimal FTP server.
+func fakeFTP(t *testing.T, passReply string) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		r := bufio.NewReader(c)
+		fmt.Fprintf(c, "220-Welcome\r\n220 ready\r\n")
+		for {
+			line, err := r.ReadString('\n')
+			if err != nil {
+				return
+			}
+			switch {
+			case strings.HasPrefix(line, "USER "):
+				fmt.Fprintf(c, "331 Password required\r\n")
+			case strings.HasPrefix(line, "PASS "):
+				fmt.Fprintf(c, "%s\r\n", passReply)
+			case strings.HasPrefix(line, "QUIT"):
+				fmt.Fprintf(c, "221 Bye\r\n")
+				return
+			}
+		}
+	}()
+	return ln.Addr().(*net.TCPAddr).Port
+}
+
+func TestProbeLogin(t *testing.T) {
+	port := fakeFTP(t, "530 Login incorrect.")
+	res, err := ProbeLogin(context.Background(), "127.0.0.1", port, TLSNone, "user", "secret-pw", 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.OK || res.Stage != "pass" || res.Reply != "530 Login incorrect." {
+		t.Fatalf("%+v", res)
+	}
+	d := loginDiagnostic(res, "user", "Pässwort ")
+	if d.Category != CategoryAuthentication || !strings.Contains(d.Message, "530 Login incorrect.") || !strings.Contains(d.Hint, "non-ASCII") || !strings.Contains(d.Hint, "space") || strings.Contains(d.Message+d.Hint, "Pässwort") {
+		t.Fatalf("%+v", d)
+	}
+
+	port = fakeFTP(t, "230 Welcome")
+	res, err = ProbeLogin(context.Background(), "127.0.0.1", port, TLSNone, "user", "pw", 5*time.Second)
+	if err != nil || !res.OK {
+		t.Fatalf("%+v %v", res, err)
+	}
+	if _, err := ProbeLogin(context.Background(), "127.0.0.1", port, TLSNone, "user", "pw\r\nDELE x", time.Second); err == nil {
+		t.Fatal("line break in password accepted")
 	}
 }

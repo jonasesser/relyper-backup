@@ -219,8 +219,21 @@ func TestConnection(ctx context.Context, o Options) Result {
 		}
 	}
 
-	// Login and directory, through rclone exactly as restic will use it.
+	// Direct login with USER/PASS, as FileZilla does it. It shows the
+	// server's own reply and tells server-side rejections apart from
+	// problems in the rclone configuration.
 	start = time.Now()
+	login, err := ProbeLogin(ctx, o.Host, o.Port, o.Mode, o.User, o.Password, o.Timeout)
+	if err != nil {
+		d := classifyNetErr(err, o.Port)
+		d.Message = "Login could not be completed (" + login.Stage + "): " + err.Error()
+		return fail("login", d, start)
+	}
+	if !login.OK {
+		return fail("login", loginDiagnostic(login, o.User, o.Password), start)
+	}
+
+	// Login and directory, through rclone exactly as restic will use it.
 	rclone := o.Rclone
 	if rclone == "" {
 		rclone = "rclone"
@@ -239,9 +252,16 @@ func TestConnection(ctx context.Context, o Options) Result {
 	// List the login directory first: it tells login problems apart from a
 	// missing repository directory.
 	if _, err := r.list(ctx, ""); err != nil {
-		return fail("login", classifyRclone(err.Error()), start)
+		d := classifyRclone(err.Error())
+		if d.Category == CategoryAuthentication {
+			// The direct login worked, so the credentials are right and the
+			// difference lies in how rclone logs in.
+			d.Message = "The direct login worked, but rclone's login was rejected: " + lastLine(err.Error())
+			d.Hint = "Please report this together with the server reply; it points to an rclone setting rather than wrong credentials."
+		}
+		return fail("login", d, start)
 	}
-	ok("login", "Logged in as "+o.User+".", start)
+	ok("login", "Logged in as "+o.User+" (server: "+login.Reply+").", start)
 
 	start = time.Now()
 	entries, err := r.list(ctx, path)
@@ -433,7 +453,7 @@ func classifyRclone(msg string) *Diagnostic {
 	case strings.Contains(l, "x509") || strings.Contains(l, "certificate"):
 		return &Diagnostic{Category: CategoryCertificate, Message: "The server certificate was rejected: " + msg, Hint: "Confirm the certificate in the form, or allow connections without certificate check."}
 	case strings.Contains(l, " 530 ") || strings.Contains(l, ": 530") || strings.Contains(l, "login incorrect") || strings.Contains(l, "authentication failed"):
-		return &Diagnostic{Category: CategoryAuthentication, Message: "Login failed: user name or password is wrong.", Hint: "Use the FTP user and password of the backup space, not the customer account login."}
+		return &Diagnostic{Category: CategoryAuthentication, Message: "Login rejected by the server: " + msg, Hint: "Check user name and password."}
 	case strings.Contains(l, "no such") || strings.Contains(l, "not found") || strings.Contains(l, "doesn't exist") || strings.Contains(l, "does not exist") || strings.Contains(l, " 550 "):
 		if strings.Contains(l, "permission") || strings.Contains(l, "denied") {
 			return &Diagnostic{Category: CategoryPermission, Message: "Permission denied: " + msg}
@@ -462,4 +482,34 @@ func lastLine(s string) string {
 		}
 	}
 	return s
+}
+
+// loginDiagnostic explains a rejected direct login with the raw reply.
+func loginDiagnostic(l LoginResult, user, password string) *Diagnostic {
+	reply := l.Reply
+	if reply == "" {
+		reply = "(no reply)"
+	}
+	d := &Diagnostic{Category: CategoryAuthentication, Message: "The server rejected the login. Server reply: " + reply}
+	l4 := strings.ToLower(reply)
+	switch {
+	case strings.Contains(l4, "encryption") || strings.Contains(l4, "tls") || strings.Contains(l4, "ssl"):
+		d.Category = CategoryTLSRequired
+		d.Hint = "The server wants a different encryption setting."
+		return d
+	case strings.HasPrefix(reply, "421"):
+		d.Category = CategoryUnknown
+		d.Hint = "The server closed the connection, e.g. too many connections or a temporary block after failed logins. Wait a few minutes and try again."
+		return d
+	}
+	var hints []string
+	if l.Stage == "user" {
+		hints = append(hints, "The server did not accept the user name.")
+	} else {
+		hints = append(hints, "User name or password is not accepted. Enter them exactly as in FileZilla (Site Manager: user and password of this FTP server).")
+	}
+	hints = append(hints, credentialHints(user, password)...)
+	hints = append(hints, "Some providers block an address for a while after several failed logins.")
+	d.Hint = strings.Join(hints, " ")
+	return d
 }
