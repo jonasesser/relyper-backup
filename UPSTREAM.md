@@ -52,11 +52,11 @@ Keep this list current; it is the merge checklist.
 
 | File | Change | Issue |
 |---|---|---|
-| `cmd/backrest/backrest.go` | registers `/healthz` and the `relyper.v1.RelyperSftp` service; calls `mcpapi.Setup` and mounts its routes (`/mcp`, OAuth, `relyper.v1.RelyperMcp`) via an extra variadic parameter of `newRootMux`; wraps the Backrest service and the authenticated routes with the read-only role gate (`internal/relyper/roles`); waits for the oplog lock and hands the data directory over between old and new instance (`internal/relyper/startup`) | #11, #12, #17, #32, #35, #37 |
+| `cmd/backrest/backrest.go` | registers `/healthz` and the `relyper.v1.RelyperSftp` and `relyper.v1.RelyperFtp` services; calls `mcpapi.Setup` and mounts its routes (`/mcp`, OAuth, `relyper.v1.RelyperMcp`) via an extra variadic parameter of `newRootMux`; wraps the Backrest service and the authenticated routes with the read-only role gate (`internal/relyper/roles`); waits for the oplog lock and hands the data directory over between old and new instance (`internal/relyper/startup`) | #11, #12, #17, #32, #35, #37, #55 |
 | `internal/api/backresthandler.go` | `SetupSftp` no longer adds host keys with `ssh-keyscan` (trust on first use) | #12 |
 | `webui/src/api/client.ts` | `transport` exported for the Relyper clients | #12 |
 | `webui/src/test/setup.tsx` | global mock for `@/relyper/api` | #12 |
-| `webui/src/features/repositories/AddRepoModal.tsx` | renders `SftpDiagnostics`; texts no longer promise automatic host key scanning; product name | #12, #14 |
+| `webui/src/features/repositories/AddRepoModal.tsx` | renders `SftpDiagnostics`; texts no longer promise automatic host key scanning; product name; storage type choice with the guided FTP / FTPS form (`FtpRepoSection` wraps the URI field, FTP env entries hidden from the generic env list, `validateFtpConfig`) | #12, #14, #55 |
 | `webui/src/features/settings/SettingsModal.tsx` | product name in one hint; Relyper Identity (OIDC) status card in the Authentication section | #14, #30 |
 | `webui/src/app/App.tsx` | Relyper logo, version opens the About dialog; sidebar entries and routes `/mcp` (MCP page), `/infra` (Infrastructure page) and `/customers` (Customers page); backup health summary above the dashboard; user menu at the top right (user, sign-in method, role, sign-out) instead of the logout button | #14, #17, #22, #28, #32, #33, #42 |
 | `webui/index.html` | title and favicon | #14 |

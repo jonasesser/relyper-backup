@@ -31,6 +31,7 @@ import (
 	"github.com/garethgeorge/backrest/internal/oplog"
 	"github.com/garethgeorge/backrest/internal/oplog/sqlitestore"
 	"github.com/garethgeorge/backrest/internal/orchestrator"
+	"github.com/garethgeorge/backrest/internal/relyper/ftpapi"
 	"github.com/garethgeorge/backrest/internal/relyper/health"
 	"github.com/garethgeorge/backrest/internal/relyper/mcpapi"
 	"github.com/garethgeorge/backrest/internal/relyper/roles"
@@ -303,6 +304,7 @@ func newRootMux(
 	authedMux.Handle(syncStatePath, syncStateHandlerUnauthed)
 	authedMux.Handle("/metrics", metric.GetRegistry().Handler())
 	authedMux.Handle(sftpapi.New(env.SSHDir())) // relyper: SFTP host key trust and connection diagnostics
+	authedMux.Handle(ftpapi.New(env.DataDir())) // relyper: FTP / FTPS setup (certificate pinning, connection test)
 
 	// Unauthenticated routes
 	unauthedMux := http.NewServeMux()

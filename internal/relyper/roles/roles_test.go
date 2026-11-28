@@ -45,6 +45,8 @@ func TestGate(t *testing.T) {
 		{viewer(), http.MethodPost, v1connect.BackrestRunCommandProcedure, http.StatusForbidden},
 		{viewer(), http.MethodPost, v1connect.BackrestGetDownloadURLProcedure, http.StatusForbidden},
 		{viewer(), http.MethodPost, "/relyper.v1.RelyperSftp/TrustHostKey", http.StatusForbidden},
+		{viewer(), http.MethodPost, "/relyper.v1.RelyperFtp/TrustCertificate", http.StatusForbidden},
+		{viewer(), http.MethodPost, "/relyper.v1.RelyperFtp/ObscurePassword", http.StatusForbidden},
 		{viewer(), http.MethodPost, "/v1sync.BackrestSyncStateService/SetRemoteClientConfig", http.StatusForbidden},
 		{viewer(), http.MethodGet, "/relyper/infra/coverage", http.StatusTeapot},
 		{viewer(), http.MethodPost, "/relyper/infra/backup", http.StatusForbidden},

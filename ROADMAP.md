@@ -23,6 +23,7 @@ not built yet.
 | Build without CDN at build time | done | #3 – i18n plugin vendored and checksummed |
 | Single Docker image that starts everything | done | #11 – tini, `/healthz`, HEALTHCHECK, compose file, `DEPLOYMENT.md` |
 | SFTP configuration and diagnostics | done | #12, #13 – host key confirmed by fingerprint, step-by-step test with error categories, verified against OpenSSH |
+| FTP / FTPS storage | done | #55 – guided form (rclone underneath), certificate pinning or explicit skip, connection test; tested against a pyftpdlib FTPS server, not yet against Host Europe; not in the MCP tools and the customer portal yet |
 | Branding | done | #14 – name, logo, favicon, About dialog with attribution |
 | Architecture docs and roadmap | done | this file, `ARCHITECTURE.md`, `SECURITY.md`, `MCP.md`, `DISASTER-RECOVERY.md` |
 
@@ -135,7 +136,7 @@ What `docs/CONCEPT.md` asks for and is not (fully) built yet, by section:
 | 7 Easypanel | Detected from Docker metadata and paths only, not verified on a real server; no Easypanel API; domains, routing, environment variables and certificates are not read. |
 | 8 Databases | Whole-server dumps only (pg_dumpall, all MySQL/MariaDB databases); no per-database selection; no explicit connection validation step; version compatibility is reported only as the image used for the dump. MongoDB is supported in addition. |
 | 9 Coverage | Concept protection states and filters exist (#26). Item states stay more detailed underneath. |
-| 10 Repositories | No guided repository wizard beyond the upstream form and the SFTP diagnostics; Google Drive / Dropbox only via rclone; Host Europe not tested. |
+| 10 Repositories | No guided repository wizard beyond the upstream form, the SFTP diagnostics and the FTP / FTPS form (#55); Google Drive / Dropbox only via rclone; Host Europe not tested. |
 | 11 Setup wizard | Wizard for the whole Docker environment, all Easypanel projects or selected apps with measured data size and shared options (#34). Granularity is the app (compose project, stack, Easypanel project); single services, directories or databases use the normal plan form. No CPU/RAM impact estimate (not measurable reliably). |
 | 12 Dashboard | Health summary (#28) and notifications for success, failure, low storage, overdue plans (#27). |
 | 13 Disaster recovery | Guided app restore (staging + runbook in restore order), network dependencies in the report, self-explaining snapshots (`RESTORE.md`, `restore-databases.sh`) and the bootstrap script `relyper-recover` (#43). The final copy into production is not automated on purpose. |

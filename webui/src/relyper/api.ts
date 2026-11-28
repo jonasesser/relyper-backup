@@ -8,3 +8,6 @@ export const relyperSftpService = createClient(RelyperSftp, transport);
 import { RelyperMcp } from "../../gen/ts/relyper/v1/mcp_pb";
 
 export const relyperMcpService = createClient(RelyperMcp, transport);
+import { RelyperFtp } from "../../gen/ts/relyper/v1/ftp_pb";
+
+export const relyperFtpService = createClient(RelyperFtp, transport);

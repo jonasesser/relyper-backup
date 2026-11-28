@@ -1,0 +1,126 @@
+syntax = "proto3";
+
+// relyper: Relyper Backup addition, not part of upstream Backrest.
+//
+// FTP / FTPS repositories. restic reaches FTP servers through rclone; this
+// service supports the guided setup in the repository form: it obscures the
+// password the way rclone expects it, shows the server's TLS certificate so
+// the user can confirm it (like FileZilla does), and runs a step-by-step
+// connection test.
+package relyper.v1;
+
+import "relyper/v1/sftp.proto";
+
+option go_package = "github.com/garethgeorge/backrest/gen/go/relyper/v1";
+
+service RelyperFtp {
+  // Returns the password in rclone's obscured form for the
+  // RCLONE_CONFIG_<REMOTE>_PASS variable. Obscuring is not encryption: it
+  // only keeps the plain password out of the configuration at a glance.
+  rpc ObscurePassword(ObscurePasswordRequest) returns (ObscurePasswordResponse) {}
+
+  // Connects to the server, negotiates TLS and describes the certificate it
+  // presents. Never changes any trust settings.
+  rpc ScanCertificate(ScanCertificateRequest) returns (ScanCertificateResponse) {}
+
+  // Pins one certificate: it is fetched again and only stored when its
+  // SHA-256 fingerprint equals the one the user confirmed. The returned file
+  // is used as SSL_CERT_FILE for the repository, so rclone then trusts exactly
+  // this certificate and nothing else.
+  rpc TrustCertificate(TrustCertificateRequest) returns (TrustCertificateResponse) {}
+
+  // Runs the connection test. The optional write test creates and removes
+  // one small file in the remote directory.
+  rpc TestConnection(FtpTestConnectionRequest) returns (FtpTestConnectionResponse) {}
+}
+
+enum FtpTlsMode {
+  FTP_TLS_MODE_UNSPECIFIED = 0; // treated as EXPLICIT
+  FTP_TLS_MODE_EXPLICIT = 1;    // FTPS: AUTH TLS on the normal FTP port (21)
+  FTP_TLS_MODE_IMPLICIT = 2;    // FTPS: TLS from the first byte (usually port 990)
+  FTP_TLS_MODE_NONE = 3;        // plain FTP: password and data unencrypted
+}
+
+message ObscurePasswordRequest {
+  string password = 1;
+}
+
+message ObscurePasswordResponse {
+  string obscured = 1;
+}
+
+message ScanCertificateRequest {
+  string host = 1;
+  int32 port = 2; // 0 means the default of the mode
+  FtpTlsMode tls_mode = 3;
+}
+
+enum CertificateStatus {
+  CERTIFICATE_STATUS_UNSPECIFIED = 0;
+  CERTIFICATE_STATUS_TRUSTED = 1;   // valid for the host and issued by a trusted authority
+  CERTIFICATE_STATUS_PINNED = 2;    // the user confirmed exactly this certificate before
+  CERTIFICATE_STATUS_UNTRUSTED = 3; // see problem; confirm the fingerprint to pin it
+}
+
+message CertificateInfo {
+  string subject = 1;
+  string issuer = 2;
+  repeated string dns_names = 3;
+  int64 not_before_unix = 4;
+  int64 not_after_unix = 5;
+  string fingerprint_sha256 = 6; // hex, colon separated, upper case (as FileZilla shows it)
+  CertificateStatus status = 7;
+  // Why the certificate is not trusted: unknown_authority, name_mismatch,
+  // expired or not_yet_valid. Empty when trusted.
+  string problem = 8;
+  string problem_message = 9;
+  // Pinning only works when the certificate is valid for the host name and
+  // not expired; otherwise only "do not check the certificate" helps.
+  bool pinnable = 10;
+  // Path of the pinned certificate file, when status is PINNED.
+  string cert_file = 11;
+}
+
+message ScanCertificateResponse {
+  CertificateInfo certificate = 1;
+  // Set when no certificate could be fetched.
+  Diagnostic error = 2;
+}
+
+message TrustCertificateRequest {
+  string host = 1;
+  int32 port = 2;
+  FtpTlsMode tls_mode = 3;
+  string fingerprint_sha256 = 4;
+}
+
+message TrustCertificateResponse {
+  string cert_file = 1;
+}
+
+message FtpTestConnectionRequest {
+  string host = 1;
+  int32 port = 2;
+  string username = 3;
+  // Plain password, used for this test only. Never stored or logged.
+  string password = 4;
+  // Alternative to password: the obscured value already in the repository
+  // configuration (when editing a repository).
+  string obscured_password = 5;
+  // Remote directory, relative to the login directory unless it starts with /.
+  string remote_path = 6;
+  FtpTlsMode tls_mode = 7;
+  // Pinned certificate file from TrustCertificate.
+  string cert_file = 8;
+  bool skip_certificate_check = 9;
+  bool write_test = 10;
+  int32 timeout_seconds = 11; // 0 means 30
+}
+
+message FtpTestConnectionResponse {
+  bool ok = 1;
+  // Step names: dns, tcp, tls, login, remote_directory, write_test, repository
+  repeated TestStep steps = 2;
+  Diagnostic error = 3;
+  RepositoryState repository_state = 4;
+}

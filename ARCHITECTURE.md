@@ -56,6 +56,8 @@ is planned but not built is marked as such; `ROADMAP.md` tracks it.
 | `cmd/relyper-healthcheck` | Container HEALTHCHECK probe; derives the port from `BACKREST_PORT`. |
 | `internal/relyper/sshdiag` | SFTP diagnostics: host key scan per key type, explicit trust bound to a confirmed SHA-256 fingerprint, step-by-step connection test with stable error categories. |
 | `internal/relyper/sftpapi` | `relyper.v1.RelyperSftp` Connect service (`ScanHostKeys`, `TrustHostKey`, `TestConnection`), mounted behind authentication. |
+| `internal/relyper/ftpdiag` | FTP / FTPS repositories (restic via rclone): rclone password obscuring, certificate inspection and pinning (`<data>/relyper/ftp-certs/`, used as `SSL_CERT_FILE`), step-by-step connection test that runs the real rclone binary. |
+| `internal/relyper/ftpapi` | `relyper.v1.RelyperFtp` Connect service (`ObscurePassword`, `ScanCertificate`, `TrustCertificate`, `TestConnection`), mounted behind authentication; read-only users are denied. |
 | `internal/relyper/mcp` | MCP server (`/mcp`, Streamable HTTP): tools per scope, approval flow for restricted tools, secret scrubbing of every result. Tools call `BackrestHandler`, the config store and the orchestrator like the UI. |
 | `internal/relyper/mcpauth` | Personal access tokens and OAuth 2.1 authorization server (metadata, dynamic client registration, PKCE, consent page, refresh rotation); store `<data>/relyper/mcp-auth.json`. |
 | `internal/relyper/approval` | In-memory approval requests bound to tool, parameter hash and token; single use, 15 minutes. |

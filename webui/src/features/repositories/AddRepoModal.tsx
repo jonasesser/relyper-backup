@@ -36,6 +36,12 @@ import {
 } from "../../components/common/ScheduleFormItem";
 import { isWindows } from "../../state/buildcfg";
 import { SftpDiagnostics } from "../../relyper/sftp/SftpDiagnostics"; // relyper
+import { FtpRepoSection } from "../../relyper/ftp/FtpRepoSection"; // relyper
+import {
+  mergeVisibleEnv,
+  validateFtpConfig,
+  visibleEnv,
+} from "../../relyper/ftp/ftpConfig"; // relyper
 import { create, fromJson, toJson } from "@bufbuild/protobuf";
 import * as m from "../../paraglide/messages";
 import { Button } from "../../components/ui/button";
@@ -193,8 +199,8 @@ const hostKeyUntrustedContent = (
     <br />
     <br />
     To proceed, manually add the correct host key to your known_hosts file, or
-    use "Fetch host key" below to compare the server's fingerprint and trust
-    it explicitly.
+    use "Fetch host key" below to compare the server's fingerprint and trust it
+    explicitly.
   </>
 );
 
@@ -546,6 +552,7 @@ export const AddRepoModal = ({
     }
 
     await envVarSetValidator(formData);
+    validateFtpConfig(uri, getField(["env"])); // relyper: FTP / FTPS form
 
     const flags = getField(["flags"]);
     if (flags && flags.some((f: string) => !/^\-\-?.*$/.test(f))) {
@@ -908,38 +915,51 @@ export const AddRepoModal = ({
               description="Where the repo lives and how Relyper Backup authenticates."
             >
               <Stack gap={4}>
-                <Field
-                  label={m.add_repo_modal_field_uri()}
-                  helperText={
-                    <>
-                      {m.add_repo_modal_field_uri_tooltip_title()}
-                      <Box as="ul" ml={4} mt={1}>
-                        <li>{m.add_repo_modal_field_uri_tooltip_local()}</li>
-                        <li>{m.add_repo_modal_field_uri_tooltip_s3()}</li>
-                        <li>{m.add_repo_modal_field_uri_tooltip_sftp()}</li>
-                        <li>
-                          {m.add_repo_modal_field_uri_tooltip_see()}{" "}
-                          <a
-                            href="https://restic.readthedocs.io/en/latest/030_preparing_a_new_repo.html#preparing-a-new-repository"
-                            target="_blank"
-                            style={{ textDecoration: "underline" }}
-                          >
-                            {m.add_repo_modal_field_uri_tooltip_restic_docs()}
-                          </a>{" "}
-                          {m.add_repo_modal_field_uri_tooltip_info()}
-                        </li>
-                      </Box>
-                    </>
-                  }
-                  required
+                {/* relyper: storage type choice and guided FTP / FTPS form */}
+                <FtpRepoSection
+                  uri={getField(["uri"])}
+                  env={getField(["env"])}
+                  locked={!!template}
+                  onChange={(uri, env) => {
+                    updateField(["uri"], uri);
+                    updateField(["env"], env);
+                  }}
                 >
-                  <URIAutocomplete
-                    disabled={!!template}
-                    value={getField(["uri"])}
-                    onChange={(val: string) => updateField(["uri"], val)}
-                    inputProps={{ "data-testid": "add-repo-uri" }}
-                  />
-                </Field>
+                  <Field
+                    label={m.add_repo_modal_field_uri()}
+                    helperText={
+                      <>
+                        {m.add_repo_modal_field_uri_tooltip_title()}
+                        <Box as="ul" ml={4} mt={1}>
+                          <li>{m.add_repo_modal_field_uri_tooltip_local()}</li>
+                          <li>{m.add_repo_modal_field_uri_tooltip_s3()}</li>
+                          <li>{m.add_repo_modal_field_uri_tooltip_sftp()}</li>
+                          {/* relyper: FTP has its own form */}
+                          <li>FTP / FTPS: choose "FTP / FTPS server" above</li>
+                          <li>
+                            {m.add_repo_modal_field_uri_tooltip_see()}{" "}
+                            <a
+                              href="https://restic.readthedocs.io/en/latest/030_preparing_a_new_repo.html#preparing-a-new-repository"
+                              target="_blank"
+                              style={{ textDecoration: "underline" }}
+                            >
+                              {m.add_repo_modal_field_uri_tooltip_restic_docs()}
+                            </a>{" "}
+                            {m.add_repo_modal_field_uri_tooltip_info()}
+                          </li>
+                        </Box>
+                      </>
+                    }
+                    required
+                  >
+                    <URIAutocomplete
+                      disabled={!!template}
+                      value={getField(["uri"])}
+                      onChange={(val: string) => updateField(["uri"], val)}
+                      inputProps={{ "data-testid": "add-repo-uri" }}
+                    />
+                  </Field>
+                </FtpRepoSection>
 
                 {getField(["uri"])?.startsWith("sftp:") && (
                   <SftpConfigSection
@@ -1001,8 +1021,18 @@ export const AddRepoModal = ({
 
                 <DynamicList
                   label={m.add_repo_modal_field_env_vars()}
-                  items={getField(["env"]) || []}
-                  onUpdate={(items: string[]) => updateField(["env"], items)}
+                  // relyper: FTP entries are edited in the FTP form
+                  items={visibleEnv(getField(["uri"]), getField(["env"]) || [])}
+                  onUpdate={(items: string[]) =>
+                    updateField(
+                      ["env"],
+                      mergeVisibleEnv(
+                        getField(["uri"]),
+                        getField(["env"]) || [],
+                        items,
+                      ),
+                    )
+                  }
                   tooltip={
                     <Stack gap={2}>
                       <CText>{m.add_repo_modal_field_env_vars_tooltip()}</CText>

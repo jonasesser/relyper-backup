@@ -24,6 +24,12 @@ the plain restic CLI, without Relyper Backup.
   fingerprint and only trusted after you confirm it; a connection test checks
   DNS, TCP, host key, login, SFTP, the directory, write access and the restic
   repository step by step and tells you what failed.
+- **FTP / FTPS storage** (e.g. Host Europe backup space) as its own storage
+  type in the repository form: server, user, password, directory and
+  encryption like in FileZilla. restic reaches the server through rclone; the
+  form writes that configuration. The FTPS certificate is shown with its
+  fingerprint and pinned after you confirm it; skipping the check is an
+  explicit option. A connection test checks every step.
 - **Reproducible builds:** no build-time downloads from CDNs.
 - Relyper branding with attribution to Backrest and restic.
 - **Native MCP server** at `/mcp`: AI clients (Claude, ChatGPT, Claude Code …)

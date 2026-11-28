@@ -17,3 +17,10 @@ export const relyperMcpService = {
   decideApproval: vi.fn(),
   listAuditEvents: vi.fn(),
 };
+
+export const relyperFtpService = {
+  obscurePassword: vi.fn(),
+  scanCertificate: vi.fn(),
+  trustCertificate: vi.fn(),
+  testConnection: vi.fn(),
+};
