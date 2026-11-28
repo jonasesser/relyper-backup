@@ -156,7 +156,7 @@ describe("SetupWizard", () => {
       target: { value: "easypanel_config" },
     });
     expect(screen.getByTestId("setup-scope-help")).toHaveTextContent(
-      "without the volumes and databases",
+      "code only when it does not come from Git",
     );
     fireEvent.click(screen.getByTestId("setup-preview"));
     expect(

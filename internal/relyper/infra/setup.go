@@ -230,8 +230,11 @@ func measure(ctx context.Context, paths []string, excludes []string, limit time.
 				}
 				return nil
 			}
-			if d.IsDir() && path != root && slices.Contains(excludes, path) {
-				return fs.SkipDir
+			if path != root && (slices.Contains(excludes, path) || slices.Contains(excludes, d.Name())) {
+				if d.IsDir() {
+					return fs.SkipDir
+				}
+				return nil
 			}
 			if est.Files%1024 == 0 && (time.Now().After(stop) || ctx.Err() != nil) {
 				return errStop

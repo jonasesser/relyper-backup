@@ -185,9 +185,10 @@ export const SetupWizard = ({
         {scope === "easypanel_config" && (
           <Text color="fg.muted" data-testid="setup-scope-help">
             One small plan for Easypanel itself: its settings (environment
-            variables, domains, ports, Traefik routes, certificates) and the
-            code and files of every service, without the volumes and databases
-            of the apps. Add the app plans later.
+            variables, domains, ports, Traefik routes, certificates) and what
+            each service needs to deploy again (.env, compose files, Dockerfile;
+            code only when it does not come from Git). No volumes, databases,
+            dependencies or build output. Add the app plans later.
           </Text>
         )}
         {scope === "apps" && (

@@ -32,6 +32,8 @@ type AppPlan struct {
 	// not chosen but lie inside a chosen directory.
 	Items    []PlanItem `json:"items"`
 	Excludes []string   `json:"excludes,omitempty"`
+	// ExcludePatterns are restic exclude patterns (names) that always apply.
+	ExcludePatterns []string `json:"exclude_patterns,omitempty"`
 }
 
 // PlanItem is one path an app plan can back up.
@@ -113,16 +115,15 @@ func (s *Service) ProposeAppPlan(ctx context.Context, appID string) (*AppPlan, e
 				for _, e := range easypanelEntries(d.BackupPath) {
 					add(PlanItem{Path: e, Kind: "easypanel", Label: easypanelEntryLabel(filepath.Base(e)), Selected: true})
 				}
-				// The configuration and code of every service, without the
-				// data in volumes/ (that is in the app plans).
+				// From every service folder only what is needed to deploy
+				// it again; data in volumes/ is in the app plans.
 				for _, ps := range easypanelFolders(d.BackupPath) {
-					dir := filepath.Join(d.BackupPath, "projects", ps[0], ps[1])
-					add(PlanItem{Path: dir, Kind: "config", Service: ps[0] + "_" + ps[1], Label: "Easypanel service folder " + ps[0] + "/" + ps[1] + " (code/ and files, without volumes/)", Selected: true})
-					if st, err := os.Stat(filepath.Join(dir, "volumes")); err == nil && st.IsDir() {
-						add(PlanItem{Path: filepath.Join(dir, "volumes"), Kind: "data", Service: ps[0] + "_" + ps[1], Label: "volumes/ of " + ps[0] + "/" + ps[1] + " (app data)",
-							Note: "app data; back it up with the plan of the app"})
+					for _, it := range easypanelRestoreItems(filepath.Join(d.BackupPath, "projects", ps[0], ps[1]), ps[0], ps[1]) {
+						add(it)
 					}
 				}
+				p.ExcludePatterns = easypanelBuildPatterns
+				p.Notes = append(p.Notes, "Code that Easypanel takes from Git is not backed up (it is fetched again on deploy); only the deployment files of such services are. Git data, dependencies and build output ("+strings.Join(easypanelBuildPatterns, ", ")+") are excluded everywhere in this plan.")
 				continue
 			}
 			// The service folder: code/ holds the source Easypanel builds
@@ -226,6 +227,7 @@ func (p *AppPlan) choose(selected []string) error {
 			p.Excludes = append(p.Excludes, it.Path)
 		}
 	}
+	p.Excludes = append(p.Excludes, p.ExcludePatterns...)
 	return nil
 }
 
@@ -438,6 +440,50 @@ func easypanelFolders(dir string) [][2]string {
 			if sv.IsDir() {
 				out = append(out, [2]string{pr.Name(), sv.Name()})
 			}
+		}
+	}
+	return out
+}
+
+// easypanelBuildPatterns are rebuilt on deploy: Git data, dependencies and
+// build output.
+var easypanelBuildPatterns = []string{".git", "node_modules", ".next", ".nuxt", ".svelte-kit", ".turbo", "dist", "build", ".cache", "__pycache__", ".venv", "venv", "target"}
+
+// deployFile matches the files needed to deploy a service again.
+var deployFile = regexp.MustCompile(`(?i)^(\.env.*|.*compose.*\.ya?ml|dockerfile.*|containerfile|.*\.dockerfile|nixpacks\.toml|procfile|caddyfile|.*\.conf)$`)
+
+// easypanelRestoreItems returns what the Easypanel plan takes from a service
+// folder: for code from Git only the deployment files at the top of code/,
+// otherwise code/ (build output is excluded by easypanelBuildPatterns),
+// files and other folders of the service, never volumes/.
+func easypanelRestoreItems(dir, project, service string) []PlanItem {
+	name := project + "/" + service
+	svc := project + "_" + service
+	var out []PlanItem
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	for _, e := range ents {
+		p := filepath.Join(dir, e.Name())
+		switch {
+		case e.Name() == "volumes":
+			continue // app data
+		case e.Name() == "code" && e.IsDir():
+			if st, err := os.Stat(filepath.Join(p, ".git")); err == nil && st.IsDir() {
+				files, _ := os.ReadDir(p)
+				for _, f := range files {
+					if f.Type().IsRegular() && deployFile.MatchString(f.Name()) {
+						out = append(out, PlanItem{Path: filepath.Join(p, f.Name()), Kind: "config", Service: svc, Label: name + ": " + f.Name() + " (code from Git is fetched again on deploy)", Selected: true})
+					}
+				}
+				continue
+			}
+			out = append(out, PlanItem{Path: p, Kind: "config", Service: svc, Label: name + ": code/ (not from Git; without dependencies and build output)", Selected: true})
+		case e.Type().IsRegular():
+			out = append(out, PlanItem{Path: p, Kind: "config", Service: svc, Label: name + ": " + e.Name(), Selected: true})
+		case e.IsDir():
+			out = append(out, PlanItem{Path: p, Kind: "config", Service: svc, Label: name + ": " + e.Name() + "/", Selected: true})
 		}
 	}
 	return out

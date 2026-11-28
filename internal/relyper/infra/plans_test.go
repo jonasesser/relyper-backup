@@ -103,8 +103,15 @@ func TestProposeEasypanelServicePlan(t *testing.T) {
 func TestProposeEasypanelSystemPlan(t *testing.T) {
 	root := t.TempDir()
 	ep := filepath.Join(root, "easypanel")
-	for _, d := range []string{"projects/hosting/budget/code", "projects/hosting/budget/volumes/data", "projects/web/db", "traefik", "data"} {
+	for _, d := range []string{"projects/hosting/budget/code/.git", "projects/hosting/budget/code/src", "projects/hosting/budget/volumes/data",
+		"projects/web/db", "projects/web/site/code/node_modules/x", "traefik", "data"} {
 		if err := os.MkdirAll(filepath.Join(ep, d), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, f := range []string{"projects/hosting/budget/code/.env", "projects/hosting/budget/code/docker-compose.yml", "projects/hosting/budget/code/Dockerfile",
+		"projects/hosting/budget/code/main.go", "projects/web/site/code/index.php", "projects/web/site/code/node_modules/x/big.js"} {
+		if err := os.WriteFile(filepath.Join(ep, f), []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -118,13 +125,21 @@ func TestProposeEasypanelSystemPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{filepath.Join(ep, "data"), filepath.Join(ep, "traefik"), filepath.Join(ep, "projects/hosting/budget"), filepath.Join(ep, "projects/web/db"), s.InventoryDir()}
+	code := filepath.Join(ep, "projects/hosting/budget/code")
+	// Code from Git: only the deployment files. Other code: code/ without
+	// dependencies. volumes/ never.
+	want := []string{filepath.Join(ep, "data"), filepath.Join(ep, "traefik"),
+		filepath.Join(code, ".env"), filepath.Join(code, "Dockerfile"), filepath.Join(code, "docker-compose.yml"),
+		filepath.Join(ep, "projects/web/site/code"), s.InventoryDir()}
 	if !slices.Equal(p.Paths, want) {
 		t.Fatalf("paths %v, want %v", p.Paths, want)
 	}
-	// App data in volumes/ stays out.
-	if !slices.Equal(p.Excludes, []string{filepath.Join(ep, "projects/hosting/budget/volumes")}) {
+	if !slices.Contains(p.Excludes, "node_modules") || !slices.Contains(p.Excludes, ".git") {
 		t.Fatalf("excludes %v", p.Excludes)
+	}
+	// The size leaves out the excluded dependencies.
+	if est := measure(context.Background(), []string{filepath.Join(ep, "projects/web/site/code")}, p.Excludes, time.Second); est.Files != 1 {
+		t.Fatalf("measured %+v", est)
 	}
 
 	// The Easypanel-only scope selects just this app.

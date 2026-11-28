@@ -8,6 +8,9 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 
 ### Added
 
+- Easypanel-only plan: from the service folders only the files needed to
+  deploy again; code from Git, `.git`, dependencies and build output are
+  left out. (#65)
 - Set up backups: "Easypanel configuration only (no app data)" creates one
   small plan with Easypanel's settings and the code of every service,
   without app volumes and databases; the preview shows the size of every
