@@ -40,6 +40,7 @@ import { SetupWizard } from "./SetupWizard";
 import { RecoveryPanel } from "./RecoveryPanel";
 import { AddRepoLink } from "./AddRepoLink";
 import { Markdown } from "./Markdown";
+import { StorageUsage } from "./StorageUsage";
 
 export const stateColor: Record<string, string> = {
   protected: "green",
@@ -1379,6 +1380,7 @@ export const InfraPage = () => {
             <TabsTrigger value="setup">Set up backups</TabsTrigger>
           )}
           <TabsTrigger value="readiness">Readiness</TabsTrigger>
+          <TabsTrigger value="storage">Storage</TabsTrigger>
           <TabsTrigger value="report">Disaster recovery</TabsTrigger>
         </TabsList>
         <TabsContent value="apps">
@@ -1502,6 +1504,9 @@ export const InfraPage = () => {
             easypanel={!!docker?.easypanel}
             onDone={() => reload(true)}
           />
+        </TabsContent>
+        <TabsContent value="storage">
+          {tab === "storage" && <StorageUsage />}
         </TabsContent>
         <TabsContent value="readiness">
           <ReadinessSection rd={rd} />

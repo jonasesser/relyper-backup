@@ -321,7 +321,30 @@ export type RecoveryGuide = {
   notes?: string[];
 };
 
+export type PlanUsage = {
+  plan: string;
+  apps?: string[];
+  snapshots: number;
+  latest_size_bytes: number;
+  latest_added_bytes: number;
+  latest_at?: string;
+  added_bytes: number;
+  without_summary?: number;
+};
+
+export type RepoUsage = {
+  repo: string;
+  location: string;
+  stored_bytes: number;
+  uncompressed_bytes?: number;
+  snapshots: number;
+  stats_at?: string;
+  storage?: StorageInfo;
+  plans: PlanUsage[];
+};
+
 export const infraApi = {
+  usage: () => call<RepoUsage[]>("usage"),
   coverage: (refresh = false) =>
     call<CoverageReport>("coverage" + (refresh ? "?refresh=1" : "")),
   readiness: () => call<ReadinessReport>("readiness"),

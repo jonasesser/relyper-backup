@@ -8,6 +8,9 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 
 ### Added
 
+- Infrastructure tab "Storage": size of every repository on its storage
+  and, per plan, kept snapshots, size of the latest backup and what the
+  plan stores; "Measure now" runs restic stats. (#63)
 - Infrastructure tab "Disaster recovery": the recovery report rendered in
   the UI, starting with "If the whole server is lost" (steps in order with
   this server's plans and apps), download and print / PDF. (#62)

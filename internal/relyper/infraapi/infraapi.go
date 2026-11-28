@@ -82,6 +82,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		rep, err := h.Infra.Coverage(ctx)
 		respond(w, rep, err)
+	case get && route == "usage":
+		u, err := h.Infra.Usage(ctx)
+		respond(w, u, err)
 	case get && route == "overview":
 		o, err := h.Infra.Overview(ctx)
 		respond(w, o, err)
