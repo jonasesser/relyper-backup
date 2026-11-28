@@ -114,9 +114,9 @@ The `BACKREST_*` names are kept from upstream so existing Backrest
 configurations and documentation keep working.
 
 | `RELYPER_OIDC_*` | unset | Sign-in with Relyper Identity; see `IDENTITY.md`. |
-| `RELYPER_GUARD_URL` | `DOCKER_HOST`, else `unix:///var/run/docker.sock` | Address of the Relyper Docker guard, e.g. `tcp://docker-guard:2375`; used for discovery, dumps and restore tests. Deprecated old name: `RELYPER_DOCKER_HOST` (still read). |
+| `RELYPER_GUARD_URL` | `DOCKER_HOST`, else `unix:///var/run/docker.sock` | Address of the Relyper Docker guard, e.g. `tcp://docker-guard:2375`; used for discovery, dumps and restore tests. |
 | `RELYPER_HOOK_COMMANDS` | `all` | `dbdump`: command hooks may only run the `relyper-dbdump` command of app plans; any other shell hook fails without running. `all` (upstream behaviour): any command. The compose files set `dbdump`. |
-| `RELYPER_GUARD_TOKEN` | unset | Token for the Relyper Docker guard: the same variable with the same value on both services. Secret; never shown or logged. Deprecated old name: `RELYPER_DOCKER_TOKEN` (still read). |
+| `RELYPER_GUARD_TOKEN` | unset | Token for the Relyper Docker guard: the same variable with the same value on both services. Secret; never shown or logged. |
 | `RELYPER_HOST_PATH_MAP` | unset | Host paths mounted elsewhere in the container, e.g. `/srv=/sources/srv,/opt/data=/sources/opt`. |
 | `RELYPER_DUMP_DIR` | `<data>/relyper/dumps` | Where database dumps are written before the backup. |
 | `RELYPER_RESTORE_DIR` | `/restore` if mounted, else `<data>/relyper/restore` | Where the guided app restore (Infrastructure → Restore…) stages data. Mount it writable; never point it at production data. |
