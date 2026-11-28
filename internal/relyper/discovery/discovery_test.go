@@ -2,6 +2,7 @@
 package discovery
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/garethgeorge/backrest/internal/relyper/docker"
@@ -129,5 +130,68 @@ func TestPathMapAndIDs(t *testing.T) {
 		if ValidAppID(id) != ok {
 			t.Errorf("ValidAppID(%q) != %v", id, ok)
 		}
+	}
+}
+
+func TestSwarmStoppedVersusRemote(t *testing.T) {
+	zero, one := uint64(0), uint64(1)
+	mk := func(id, name string, replicas *uint64, mounts ...[3]string) docker.Service {
+		var s docker.Service
+		s.ID = id
+		s.Spec.Name = name
+		s.Spec.Labels = map[string]string{"com.docker.stack.namespace": "voice"}
+		s.Spec.TaskTemplate.ContainerSpec.Image = "app:1"
+		if replicas != nil {
+			s.Spec.Mode.Replicated = &struct {
+				Replicas *uint64 `json:"Replicas"`
+			}{Replicas: replicas}
+		}
+		for _, m := range mounts {
+			s.Spec.TaskTemplate.ContainerSpec.Mounts = append(s.Spec.TaskTemplate.ContainerSpec.Mounts, struct {
+				Type   string `json:"Type"`
+				Source string `json:"Source"`
+				Target string `json:"Target"`
+			}{m[0], m[1], m[2]})
+		}
+		return s
+	}
+	running := func(svc, node string) docker.Task {
+		var t docker.Task
+		t.ServiceID, t.NodeID, t.DesiredState, t.Status.State = svc, node, "running", "running"
+		return t
+	}
+	opt := Options{
+		Exists:    func(string) bool { return true },
+		LocalNode: "here",
+		Volumes:   map[string]bool{"voice_data": true},
+		Tasks:     []docker.Task{running("s3", "elsewhere"), running("s4", "here")},
+	}
+	services := []docker.Service{
+		mk("s1", "voice_scaled", &zero, [3]string{"volume", "voice_data", "/data"}, [3]string{"volume", "missing_vol", "/other"}),
+		mk("s2", "voice_crashed", &one, [3]string{"bind", "/srv/voice", "/srv"}),
+		mk("s3", "voice_remote", &one),
+	}
+	apps, _ := Build(nil, services, opt)
+	inv := &Inventory{Apps: apps}
+	a := inv.Find("swarm_stack:voice")
+	if a == nil {
+		t.Fatalf("apps: %+v", apps)
+	}
+	st := map[string]Service{}
+	for _, s := range a.Services {
+		st[s.Name] = s
+	}
+	if s := st["scaled"]; s.State != "stopped" || len(s.Data) != 1 || s.Data[0].BackupPath != "/var/lib/docker/volumes/voice_data/_data" {
+		t.Errorf("scaled to 0: %+v", s)
+	}
+	if s := st["crashed"]; s.State != "stopped" || len(s.Data) != 1 || s.Data[0].BackupPath != "/srv/voice" {
+		t.Errorf("no running task: %+v", s)
+	}
+	if s := st["remote"]; s.State != "remote" || len(s.Data) != 0 {
+		t.Errorf("remote: %+v", s)
+	}
+	notes := strings.Join(a.Notes, " ")
+	if !strings.Contains(notes, "missing_vol") || !strings.Contains(notes, "stopped") || !strings.Contains(notes, "another Swarm node") {
+		t.Errorf("notes: %v", a.Notes)
 	}
 }

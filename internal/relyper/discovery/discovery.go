@@ -78,7 +78,7 @@ type Service struct {
 	Container    string    `json:"container,omitempty"` // current container name, empty if none on this node
 	ContainerID  string    `json:"container_id,omitempty"`
 	Image        string    `json:"image"`
-	State        string    `json:"state"` // running, exited, …, or "remote" for a Swarm service without a local task
+	State        string    `json:"state"` // running, exited, …; "stopped" for a Swarm service without a running task, "remote" for one that runs on another node
 	SwarmService string    `json:"swarm_service,omitempty"`
 	Data         []Data    `json:"data,omitempty"`
 	Database     *Database `json:"database,omitempty"`
@@ -139,6 +139,13 @@ type Options struct {
 	// Details holds inspect results by container ID (restart policy,
 	// resources); optional.
 	Details map[string]*docker.ContainerDetails
+	// LocalNode is the Swarm node ID of this daemon; Tasks the Swarm tasks
+	// that should run and Volumes the names of the local volumes. With
+	// Tasks nil, a Swarm service without a local container is reported as
+	// running elsewhere unless it is scaled to 0.
+	LocalNode string
+	Tasks     []docker.Task
+	Volumes   map[string]bool
 }
 
 // PathMapFromEnv reads RELYPER_HOST_PATH_MAP ("/host=/local,/a=/b"). Host
@@ -233,6 +240,23 @@ func Discover(ctx context.Context, c *docker.Client, opt Options) *Inventory {
 	var services []docker.Service
 	if inv.Docker.Swarm && info != nil && info.Swarm.ControlAvailable {
 		services, _ = c.ListServices(ctx)
+		if len(services) > 0 {
+			opt.LocalNode = info.Swarm.NodeID
+			if t, err := c.ListTasks(ctx); err == nil {
+				opt.Tasks = t
+				if opt.Tasks == nil {
+					opt.Tasks = []docker.Task{}
+				}
+			}
+			if vols, err := c.ListVolumes(ctx); err == nil {
+				opt.Volumes = map[string]bool{}
+				for _, v := range vols {
+					if v.Driver == "" || v.Driver == "local" {
+						opt.Volumes[v.Name] = true
+					}
+				}
+			}
+		}
 	}
 	inv.Apps, inv.Docker.Easypanel = Build(containers, services, opt)
 	return inv
@@ -334,8 +358,9 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 		appID, appName, kind, svcName := classifyService(s, easypanel)
 		a := get(appID, appName, kind)
 		img := s.Spec.TaskTemplate.ContainerSpec.Image
+		state := swarmState(s, opt)
 		rs := Service{
-			Name: svcName, Image: img, State: "remote", SwarmService: name,
+			Name: svcName, Image: img, State: state, SwarmService: name,
 			Database: detectDatabase(img), Labels: safeLabels(s.Spec.Labels), Domains: domains(s.Spec.Labels),
 			RestartPolicy: s.Spec.TaskTemplate.RestartPolicy.Condition,
 			MemoryLimit:   s.Spec.TaskTemplate.Resources.Limits.MemoryBytes,
@@ -344,8 +369,26 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 		if rs.Database == nil {
 			rs.UnsupportedDatabase = unsupportedEngine(img)
 		}
+		if state == "remote" {
+			a.Notes = appendOnce(a.Notes, "Some services run on another Swarm node. Their data is not reachable from this node.")
+		} else {
+			// Stopped: the data stays on this node and is backed up from
+			// the service definition.
+			for _, m := range s.Spec.TaskTemplate.ContainerSpec.Mounts {
+				// A stopped database's files are consistent: back them up
+				// as files (no DatabaseFiles exclusion).
+				d, ok := specData(m.Type, m.Source, m.Target, nil, opt)
+				if !ok {
+					if m.Type == "volume" && m.Source != "" {
+						a.Notes = appendOnce(a.Notes, fmt.Sprintf("Volume %s of the stopped service %s is not on this node.", m.Source, svcName))
+					}
+					continue
+				}
+				rs.Data = append(rs.Data, d)
+			}
+			a.Notes = appendOnce(a.Notes, "Some services are stopped (no running task). Their data on this node is still backed up; database dumps need the database to run.")
+		}
 		a.Services = append(a.Services, rs)
-		a.Notes = appendOnce(a.Notes, "Some services run on another Swarm node. Their data is not reachable from this node.")
 	}
 	out := make([]App, 0, len(apps))
 	for _, a := range apps {
@@ -535,4 +578,51 @@ var appIDRe = regexp.MustCompile(`^[a-z_]+:[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
 // Slug turns an app ID into a directory name.
 func Slug(id string) string {
 	return strings.NewReplacer(":", "-", "/", "-").Replace(id)
+}
+
+// swarmState tells a Swarm service without a container on this node apart:
+// "stopped" when it is scaled to 0 or has no running task, "remote" when a
+// task runs on another node.
+func swarmState(s docker.Service, opt Options) string {
+	if r := s.Spec.Mode.Replicated; r != nil && r.Replicas != nil && *r.Replicas == 0 {
+		return "stopped"
+	}
+	if opt.Tasks == nil {
+		return "remote" // unknown: keep the cautious answer
+	}
+	for _, t := range opt.Tasks {
+		if t.ServiceID == s.ID && t.Status.State == "running" && t.NodeID != opt.LocalNode {
+			return "remote"
+		}
+	}
+	return "stopped"
+}
+
+// specData describes a mount of a service definition for a service that has
+// no container here. ok is false when its data is not on this node.
+func specData(typ, source, target string, db *Database, opt Options) (Data, bool) {
+	switch typ {
+	case "tmpfs":
+		return Data{Type: typ, ContainerPath: target, Class: ClassTemporary}, true
+	case "volume":
+		if source == "" || !opt.Volumes[source] {
+			return Data{}, false
+		}
+		host := "/var/lib/docker/volumes/" + source + "/_data"
+		d := Data{Type: typ, Name: source, HostPath: host, ContainerPath: target}
+		d.BackupPath = opt.LocalPath(host)
+		d.DatabaseFiles = db != nil && isDataDir(db.Engine, target)
+		d.Class = classifyData(typ, target, d.DatabaseFiles)
+		return d, true
+	case "bind":
+		if source == "" || isSocket(source) {
+			return Data{}, false
+		}
+		d := Data{Type: typ, HostPath: source, ContainerPath: target}
+		d.BackupPath = opt.LocalPath(source)
+		d.DatabaseFiles = db != nil && isDataDir(db.Engine, target)
+		d.Class = classifyData(typ, target, d.DatabaseFiles)
+		return d, true
+	}
+	return Data{}, false
 }

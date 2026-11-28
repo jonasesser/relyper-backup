@@ -29,6 +29,10 @@ type Manifest struct {
 	App       string    `json:"app"`
 	CreatedAt time.Time `json:"created_at"`
 	Dumps     []Dump    `json:"dumps"`
+	// Stopped lists database services of a stopped Swarm service (scaled
+	// to 0). They are not dumped; their files are backed up as files,
+	// which is consistent while the database does not run.
+	Stopped []string `json:"stopped,omitempty"`
 }
 
 // Dump is one database dump.
@@ -69,6 +73,11 @@ func DumpApp(ctx context.Context, c *docker.Client, app *discovery.App, base str
 		if s.Database == nil {
 			continue
 		}
+		if s.State == "stopped" {
+			fmt.Fprintf(log, "%s: stopped Swarm service, no dump; its files are backed up as files\n", s.Name)
+			m.Stopped = append(m.Stopped, s.Name)
+			continue
+		}
 		if s.State != "running" || s.ContainerID == "" {
 			return nil, fmt.Errorf("%s: database container is not running on this host (%s)", s.Name, s.State)
 		}
@@ -78,7 +87,7 @@ func DumpApp(ctx context.Context, c *docker.Client, app *discovery.App, base str
 		}
 		m.Dumps = append(m.Dumps, *d)
 	}
-	if len(m.Dumps) == 0 {
+	if len(m.Dumps) == 0 && len(m.Stopped) == 0 {
 		return nil, errors.New("the app has no database")
 	}
 	b, _ := json.MarshalIndent(m, "", "  ")

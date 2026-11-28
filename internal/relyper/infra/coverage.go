@@ -24,6 +24,7 @@ const (
 	StateUnprotected   = "unprotected"     // no plan covers it
 	StateNotReachable  = "not_reachable"   // the data is not mounted into Relyper Backup
 	StateRemote        = "remote"          // runs on another Swarm node
+	StateStopped       = "stopped"         // Swarm service without a running task; its data here is still backed up
 	StateViaDump       = "covered_by_dump" // live database files; the dump is what counts
 	StateUnsupported   = "unsupported"     // a database without consistent dump support
 	StateNoData        = "no_data"         // app without volumes, bind mounts or databases
@@ -86,7 +87,7 @@ type CoverageReport struct {
 }
 
 var stateRank = map[string]int{
-	StateNoData: 0, StateNotNeeded: 0, StateProtected: 0, StateViaDump: 0, StateRemote: 1, StateUnsupported: 2, StateStale: 2, StateNotInSnapshot: 3, StateDisabled: 4, StateFailing: 5, StateNotReachable: 6, StateUnprotected: 7,
+	StateNoData: 0, StateNotNeeded: 0, StateProtected: 0, StateViaDump: 0, StateStopped: 0, StateRemote: 1, StateUnsupported: 2, StateStale: 2, StateNotInSnapshot: 3, StateDisabled: 4, StateFailing: 5, StateNotReachable: 6, StateUnprotected: 7,
 }
 
 var hookRe = regexp.MustCompile(`dump --dir '([^']+)' '([^']+)'`)
@@ -258,12 +259,21 @@ func (s *Service) Coverage(ctx context.Context) (*CoverageReport, error) {
 				ac.Items = append(ac.Items, CoverageItem{Service: svc.Name, Kind: "service", Name: svc.SwarmService, State: StateRemote, Detail: "runs on another Swarm node"})
 				continue
 			}
+			if svc.State == "stopped" {
+				detail := "stopped (no running task); its data on this node is still backed up"
+				if svc.Database != nil {
+					detail = "stopped database; its files are backed up as files, a dump is made again once it runs"
+				}
+				ac.Items = append(ac.Items, CoverageItem{Service: svc.Name, Kind: "service", Name: svc.SwarmService, State: StateStopped, Detail: detail})
+			}
 			if svc.UnsupportedDatabase != "" {
 				ac.Databases = appendUnique(ac.Databases, svc.UnsupportedDatabase)
 				ac.Items = append(ac.Items, CoverageItem{Service: svc.Name, Kind: "database", Name: svc.UnsupportedDatabase, State: StateUnsupported,
 					Detail: "no consistent dump support for " + svc.UnsupportedDatabase + "; its files are only backed up as files"})
 			}
-			if svc.Database != nil {
+			if svc.Database != nil && svc.State == "stopped" {
+				ac.Databases = appendUnique(ac.Databases, svc.Database.Engine)
+			} else if svc.Database != nil {
 				ac.Databases = appendUnique(ac.Databases, svc.Database.Engine)
 				item := CoverageItem{Service: svc.Name, Kind: "database", Name: svc.Database.Engine}
 				if len(dumpPlans) == 0 {
@@ -381,7 +391,7 @@ func (s *Service) protection(ac *AppCoverage, now time.Time) {
 	required := 0
 	for _, it := range ac.Items {
 		count[it.State]++
-		if it.State != StateNotNeeded && it.State != StateRemote {
+		if it.State != StateNotNeeded && it.State != StateRemote && it.State != StateStopped {
 			required++
 		}
 	}

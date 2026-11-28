@@ -117,6 +117,7 @@ func TestProtection(t *testing.T) {
 		{"stale", []string{StateStale, StateProtected}, ProtOverdue},
 		{"unsupported db", []string{StateUnsupported, StateProtected}, ProtUnsupported},
 		{"remote", []string{StateRemote, StateProtected}, ProtPartial},
+		{"stopped service, data protected", []string{StateStopped, StateProtected}, ProtFull},
 	}
 	for _, c := range cases {
 		ac := AppCoverage{App: "compose:x", State: StateProtected}

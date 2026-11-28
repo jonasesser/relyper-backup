@@ -364,8 +364,16 @@ func (c *Client) ListVolumes(ctx context.Context) ([]Volume, error) {
 type Service struct {
 	ID   string `json:"ID"`
 	Spec struct {
-		Name         string            `json:"Name"`
-		Labels       map[string]string `json:"Labels"`
+		Name   string            `json:"Name"`
+		Labels map[string]string `json:"Labels"`
+		// Mode tells replicated (with the wanted number of replicas) from
+		// global services.
+		Mode struct {
+			Replicated *struct {
+				Replicas *uint64 `json:"Replicas"`
+			} `json:"Replicated"`
+			Global *struct{} `json:"Global"`
+		} `json:"Mode"`
 		TaskTemplate struct {
 			ContainerSpec struct {
 				Image  string            `json:"Image"`
@@ -398,6 +406,24 @@ func (c *Client) ListServices(ctx context.Context) ([]Service, error) {
 	if errors.As(err, &e) && (e.Status == http.StatusServiceUnavailable || e.Status == http.StatusNotAcceptable) {
 		return nil, nil
 	}
+	return out, err
+}
+
+// Task is a Swarm task (one replica of a service on one node).
+type Task struct {
+	ID           string `json:"ID"`
+	ServiceID    string `json:"ServiceID"`
+	NodeID       string `json:"NodeID"`
+	DesiredState string `json:"DesiredState"`
+	Status       struct {
+		State string `json:"State"`
+	} `json:"Status"`
+}
+
+// ListTasks lists the Swarm tasks that should run (desired state running).
+func (c *Client) ListTasks(ctx context.Context) ([]Task, error) {
+	var out []Task
+	err := c.do(ctx, http.MethodGet, "/tasks", url.Values{"filters": {`{"desired-state":["running"]}`}}, nil, &out)
 	return out, err
 }
 

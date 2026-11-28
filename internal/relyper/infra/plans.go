@@ -62,7 +62,9 @@ func (s *Service) ProposeAppPlan(ctx context.Context, appID string) (*AppPlan, e
 		}
 		if svc.Database != nil {
 			p.Databases = append(p.Databases, svc.Name+" ("+svc.Database.Engine+")")
-			if svc.State != "running" {
+			if svc.State == "stopped" {
+				p.Warnings = append(p.Warnings, svc.Name+" is stopped; while it stays stopped its files are backed up instead of a dump")
+			} else if svc.State != "running" {
 				p.Warnings = append(p.Warnings, svc.Name+" is not running; the dump before each backup will fail until it runs")
 			}
 		}
