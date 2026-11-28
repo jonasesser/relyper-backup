@@ -21,6 +21,7 @@ import {
   FiHome,
   FiChevronRight,
   FiCpu, // relyper: MCP integration
+  FiUsers, // relyper: customers
 } from "react-icons/fi";
 
 import {
@@ -98,6 +99,9 @@ const spin = keyframes`
 
 const McpPage = React.lazy(() => import("../relyper/mcp/McpPage")); // relyper
 const InfraPage = React.lazy(() => import("../relyper/infra/InfraPage")); // relyper
+const CustomersPage = React.lazy(
+  () => import("../relyper/tenants/CustomersPage"),
+); // relyper
 const HealthOverview = React.lazy(
   () => import("../relyper/infra/HealthOverview"),
 ); // relyper
@@ -666,6 +670,23 @@ const SidebarContent = ({ onClose }: { onClose?: () => void }) => {
           </Flex>
         </Box>
 
+        {/* relyper: customers of the customer portal */}
+        <Box
+          cursor="pointer"
+          onClick={() => handleNav("/customers")}
+          px={4}
+          py={2}
+          bg={isActive("/customers") ? "bg.muted" : undefined}
+          _hover={{ bg: "bg.muted" }}
+          userSelect="none"
+          data-testid="sidebar-customers"
+        >
+          <Flex align="center" gap={2}>
+            <FiUsers />
+            <Text fontWeight="medium">Customers</Text>
+          </Flex>
+        </Box>
+
         {/* relyper: MCP integration (tokens, approvals, audit log) */}
         <Box
           cursor="pointer"
@@ -1034,6 +1055,16 @@ export const App: React.FC = () => {
                       breadcrumbs={[{ title: "Infrastructure" }]}
                     >
                       <InfraPage />
+                    </MainContentAreaTemplate>
+                  }
+                />
+                <Route
+                  path="/customers"
+                  element={
+                    <MainContentAreaTemplate
+                      breadcrumbs={[{ title: "Customers" }]}
+                    >
+                      <CustomersPage />
                     </MainContentAreaTemplate>
                   }
                 />

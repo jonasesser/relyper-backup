@@ -62,6 +62,9 @@ is planned but not built is marked as such; `ROADMAP.md` tracks it.
 | `internal/relyper/audit` | JSON Lines audit log `<data>/relyper/audit.jsonl`. |
 | `internal/relyper/identity` | Sign-in with Relyper Identity (OIDC): `/auth/oidc/*`, PKCE/state/nonce, ID token check (RS256 via JWKS), roles, web UI session tokens; see `IDENTITY.md`. |
 | `internal/relyper/mcpapi` | Wiring into the HTTP server and the `relyper.v1.RelyperMcp` service for the web UI (tokens, approvals, audit). |
+| `internal/relyper/tenant` | Customers (tenants) for backup as a service: store `<data>/relyper/tenants.json`, assignments of plans and repositories, portal gate (tenant claim and customer roles). |
+| `internal/relyper/portal` | Customer portal API `/relyper/portal/api/` (own authentication with portal sessions), operator API `/relyper/tenants/`, SMTP notifications per tenant, own storage, recovery kits and key escrow. See `CUSTOMERS.md` and `docs/CONCEPT-MULTITENANT.md`. |
+| `cmd/relyper-escrow` | Offline tool for the operator's escrow key pair. |
 | `proto/relyper/v1` | Relyper API definitions, separate from upstream's `v1` package. |
 
 Design rules for additions: own packages and own proto package

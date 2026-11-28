@@ -47,8 +47,15 @@ export const completeHandoff = async (): Promise<boolean> => {
     credentials: "same-origin",
   });
   if (!resp.ok) return false;
-  const body = (await resp.json()) as { token?: string };
+  const body = (await resp.json()) as { token?: string; kind?: string };
   if (!body.token) return false;
+  if (body.kind === "portal") {
+    // A customer signed in on the operator login: their session only works
+    // in the customer portal.
+    localStorage.setItem("relyper-portal-token", body.token);
+    window.location.hash = "#/portal";
+    return true;
+  }
   setAuthToken(body.token);
   return true;
 };

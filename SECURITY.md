@@ -28,6 +28,8 @@ https://github.com/garethgeorge/backrest/security.
 | Audit | MCP tool calls, approvals, token and OAuth events go to `<data>/relyper/audit.jsonl` with redacted parameters. Trusting a host key in the UI is logged with user, host and fingerprint. Backup operations are recorded in the operation history. Web UI configuration changes are not audited yet. |
 | TLS | Not terminated by the server. Run it behind a TLS reverse proxy (Easypanel/Traefik, Caddy, nginx). |
 
+| Customers (backup as a service) | Optional customer portal (`RELYPER_PORTAL=1`). Portal sessions have their own key and issuer and are refused by every operator route; operator sessions are refused by the portal. The tenant comes only from the signed session and is checked against `tenants.json` on every request; every plan, repository and snapshot ID is checked against the tenant; foreign IDs answer 404. Customer input never becomes flags, hooks or variable names; `$` is refused so the server's environment cannot leak to a customer endpoint; storage endpoints must be https and not internal addresses. Destructive operations stay with the operator. Recovery kits are separate restic keys shown once; escrow copies are sealed to an offline public key. Threat model: `docs/CONCEPT-MULTITENANT.md`. (Relyper, #29, #31, #33) |
+
 ## Threat model
 
 ### Assets

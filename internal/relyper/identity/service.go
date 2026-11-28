@@ -186,7 +186,7 @@ func DisabledStatus(w http.ResponseWriter, r *http.Request) {
 func (s *Service) status(w http.ResponseWriter, r *http.Request) {
 	noStore(w)
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"enabled": s.Enabled(), "name": s.cfg.DisplayName})
+	_ = json.NewEncoder(w).Encode(map[string]any{"enabled": s.Enabled(), "name": s.cfg.DisplayName, "portal": s.PortalEnabled()})
 }
 
 func (s *Service) login(w http.ResponseWriter, r *http.Request) {

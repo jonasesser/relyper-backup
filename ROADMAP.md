@@ -106,6 +106,11 @@ Design: `docs/CONCEPT-MULTITENANT.md` (#25).
 | E-mail per tenant (failure, warning, success, stale) | done | #29 – SMTP; not yet tested against a real mail server |
 | Own storage (S3, B2, Azure, REST), plan copy to own storage | done | #31 – validated, not yet tried against real accounts; SFTP later |
 | Recovery kit with separate customer key, optional escrow, `relyper-escrow` | done | #31 – tested against restic 0.19.1 |
+| Customer portal UI (`/#/portal`) and operator page "Customers" | done | #33 |
+| Restores from the portal (file download) | open | customers restore with the recovery kit or through the operator |
+| SFTP as own storage | open | needs the host key flow of #12 in the portal |
+| Tenant-scoped MCP access | open | MCP stays operator-only |
+| Test with the real Relyper IdP (customer role, tenant claim), real cloud storage and SMTP | open | needs credentials from the owner |
 
 ## Open decisions
 

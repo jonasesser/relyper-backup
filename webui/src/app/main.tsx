@@ -9,6 +9,10 @@ import "react-js-cron/dist/styles.css";
 import { HashRouter } from "react-router";
 import { AppProvider } from "./provider";
 
+// relyper: the customer portal (#/portal) is a separate screen without the operator UI.
+const PortalApp = React.lazy(() => import("../relyper/portal/PortalApp"));
+const isPortal = window.location.hash.startsWith("#/portal");
+
 const Root = ({ children }: { children: React.ReactNode }) => {
   return (
     <AppProvider>
@@ -25,9 +29,15 @@ el &&
   createRoot(el).render(
     <React.StrictMode>
       <Root>
-        <HashRouter>
-          <App />
-        </HashRouter>
+        {isPortal ? (
+          <React.Suspense fallback={null}>
+            <PortalApp />
+          </React.Suspense>
+        ) : (
+          <HashRouter>
+            <App />
+          </HashRouter>
+        )}
       </Root>
     </React.StrictMode>,
   );

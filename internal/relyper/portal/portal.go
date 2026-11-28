@@ -328,8 +328,6 @@ func (h *Handler) overview(t *tenant.Tenant) (*Overview, error) {
 			ov.Problems = append(ov.Problems, Problem{Plan: v.ID, State: v.State, Message: msg})
 		case StateStale:
 			ov.Problems = append(ov.Problems, Problem{Plan: v.ID, State: v.State, Message: "No successful backup for more than " + strconv.Itoa(int(h.d.StaleAfter.Hours())) + " hours."})
-		case StateNever:
-			ov.Problems = append(ov.Problems, Problem{Plan: v.ID, State: v.State, Message: "This plan has not run yet."})
 		case StateWarning:
 			ov.Problems = append(ov.Problems, Problem{Plan: v.ID, State: v.State, Message: "The last backup finished with warnings: some files could not be read."})
 		}
