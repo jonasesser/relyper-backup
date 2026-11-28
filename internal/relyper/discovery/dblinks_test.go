@@ -1,6 +1,8 @@
 package discovery
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -55,5 +57,21 @@ func TestSafeDatabaseEnv(t *testing.T) {
 		if got != c.want || ok != (c.want != "") {
 			t.Errorf("%s=%s: got %q %v, want %q", c.name, c.value, got, ok, c.want)
 		}
+	}
+}
+
+func TestSQLiteFiles(t *testing.T) {
+	root := t.TempDir()
+	must := func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(os.MkdirAll(filepath.Join(root, "server-files"), 0o700))
+	must(os.WriteFile(filepath.Join(root, "server-files", "account.sqlite"), append([]byte("SQLite format 3\x00"), make([]byte, 84)...), 0o600))
+	must(os.WriteFile(filepath.Join(root, "notes.db"), []byte("not a database"), 0o600))
+	got := sqliteFiles(root)
+	if len(got) != 1 || got[0] != filepath.Join("server-files", "account.sqlite") {
+		t.Fatalf("got %v", got)
 	}
 }

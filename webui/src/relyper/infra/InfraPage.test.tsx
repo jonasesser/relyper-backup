@@ -439,6 +439,14 @@ describe("InfraPage", () => {
           name: "budget_data",
           path: "/v/budget",
           state: "unprotected",
+          sqlite: ["server-files/account.sqlite"],
+        },
+        {
+          service: "",
+          kind: "app_definition" as const,
+          name: "app definition",
+          path: "/dumps/_inventory/apps/budget.json",
+          state: "unprotected",
         },
       ],
       database_links: [
@@ -477,6 +485,10 @@ describe("InfraPage", () => {
       'budget uses postgres database "budget" on db',
     );
     expect(dbs).toHaveTextContent("which runs in app db");
+    expect(dbs).toHaveTextContent(
+      "SQLite in volume budget_data: server-files/account.sqlite",
+    );
+    expect(card).toHaveTextContent("configuration app definition");
     const old = card.querySelector("[data-testid=old-tasks]")!;
     expect(old).toHaveTextContent(
       "1 stopped container from earlier deployments",

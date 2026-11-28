@@ -20,11 +20,15 @@ const (
 	ClassDatabase      = "database"      // live database files, protected by the dump
 	ClassCache         = "cache"         // can be rebuilt, not backed up
 	ClassTemporary     = "temporary"     // tmpfs or /tmp, not backed up
+	// ClassSource is a read-only mount of Relyper Backup itself through
+	// which it reads the data of other apps (/var/lib/docker/volumes,
+	// /etc/easypanel, …); it is backed up through those apps.
+	ClassSource = "source"
 )
 
 // Backed reports whether data of this class belongs in a backup.
 func Backed(class string) bool {
-	return class != ClassCache && class != ClassTemporary && class != ClassDatabase
+	return class != ClassCache && class != ClassTemporary && class != ClassDatabase && class != ClassSource
 }
 
 // DeploymentFile is a file that defines how an app is deployed, e.g. its

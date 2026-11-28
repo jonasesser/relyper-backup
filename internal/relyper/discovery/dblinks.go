@@ -8,8 +8,12 @@
 package discovery
 
 import (
+	"bytes"
+	"io/fs"
 	"net/url"
+	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -181,4 +185,56 @@ func SafeDatabaseEnv(name, value string) (string, bool) {
 		return l.Host, true
 	}
 	return "", false
+}
+
+// findSQLite looks for SQLite database files in the data of every service
+// that Relyper Backup can read: at most 4 directory levels and 5000 entries
+// per mount, so a large volume costs little.
+func findSQLite(apps []App) {
+	for ai := range apps {
+		for si := range apps[ai].Services {
+			for di := range apps[ai].Services[si].Data {
+				d := &apps[ai].Services[si].Data[di]
+				if d.BackupPath != "" && !d.DatabaseFiles {
+					d.SQLite = sqliteFiles(d.BackupPath)
+				}
+			}
+		}
+	}
+}
+
+var sqliteHeader = []byte("SQLite format 3\x00")
+
+func sqliteFiles(root string) []string {
+	var out []string
+	n := 0
+	_ = filepath.WalkDir(root, func(p string, e fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if n++; n > 5000 || len(out) >= 20 {
+			return fs.SkipAll
+		}
+		rel, _ := filepath.Rel(root, p)
+		if e.IsDir() {
+			if rel != "." && strings.Count(rel, string(filepath.Separator)) >= 3 {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !e.Type().IsRegular() || !sqliteFile.MatchString(p) && !strings.HasSuffix(p, ".sqlite") {
+			return nil
+		}
+		f, err := os.Open(p)
+		if err != nil {
+			return nil
+		}
+		defer f.Close()
+		head := make([]byte, 16)
+		if _, err := f.Read(head); err == nil && bytes.Equal(head, sqliteHeader) {
+			out = append(out, rel)
+		}
+		return nil
+	})
+	return out
 }

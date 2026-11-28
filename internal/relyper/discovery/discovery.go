@@ -26,6 +26,9 @@ const (
 	KindStandalone = "container"
 	// KindGroup is a group of apps formed by a Relyper Backup tag.
 	KindGroup = "group"
+	// KindSystem is the hosting panel itself (Easypanel): its settings,
+	// Traefik routes and certificates.
+	KindSystem = "system"
 )
 
 // Database engines with dump support.
@@ -144,6 +147,9 @@ type Data struct {
 	DatabaseFiles bool `json:"database_files,omitempty"`
 	// Class is persistent, configuration, database, cache or temporary.
 	Class string `json:"class"`
+	// SQLite lists SQLite database files found in the data (paths relative
+	// to it). Apps like Actual or Vaultwarden keep their database this way.
+	SQLite []string `json:"sqlite,omitempty"`
 }
 
 // Database is a detected database server.
@@ -294,6 +300,7 @@ func Discover(ctx context.Context, c *docker.Client, opt Options) *Inventory {
 	}
 	inv.Apps, inv.Docker.Easypanel = Build(containers, services, opt)
 	inv.Docker.EasypanelConfig = EasypanelConfig(containers, opt)
+	findSQLite(inv.Apps)
 	return inv
 }
 
@@ -328,7 +335,23 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 		specs[sv.Spec.Name] = sv
 	}
 	for _, c := range containers {
-		if c.Labels[docker.VerifyLabel] == "true" || c.Labels[docker.RoleLabel] == docker.RoleGuard || isSelf(c.ID, c.Name(), opt.SelfID) || isEasypanelImage(c.Image) {
+		if isEasypanelImage(c.Image) {
+			a := get(EasypanelSystemID, "Easypanel", KindSystem)
+			if c.State != "running" && c.Labels["com.docker.swarm.service.name"] != "" {
+				a.OldTasks = append(a.OldTasks, OldTask{Service: "easypanel", Container: c.Name(), Image: c.Image, State: c.State, Status: c.Status})
+				continue
+			}
+			a.Services = append(a.Services, Service{Name: "easypanel", Container: c.Name(), ContainerID: c.ID, Image: c.Image, State: c.State,
+				SwarmService: c.Labels["com.docker.swarm.service.name"]})
+			continue
+		}
+		self := isSelf(c.ID, c.Name(), opt.SelfID)
+		if c.Labels[docker.VerifyLabel] == "true" || c.Labels[docker.RoleLabel] == docker.RoleGuard {
+			// Relyper's own containers are not apps; their Swarm service
+			// must not show up as a stopped service either.
+			if sv := c.Labels["com.docker.swarm.service.name"]; sv != "" && !isEasypanelImage(c.Image) {
+				seenSwarm[sv] = true
+			}
 			continue
 		}
 		svc := Service{
@@ -388,6 +411,9 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 			d.BackupPath = opt.LocalPath(m.Source)
 			d.DatabaseFiles = svc.Database != nil && isDataDir(svc.Database.Engine, m.Destination)
 			d.Class = classifyData(m.Type, m.Destination, d.DatabaseFiles)
+			if self && m.Type == "bind" && !m.RW {
+				d.Class = ClassSource
+			}
 			svc.Data = append(svc.Data, d)
 		}
 		appID, appName, kind, svcName := classify(c, easypanel)
@@ -766,6 +792,9 @@ func EasypanelConfig(containers []docker.ContainerSummary, opt Options) []Deploy
 	}
 	return out
 }
+
+// EasypanelSystemID is the app of Easypanel itself.
+const EasypanelSystemID = KindSystem + ":easypanel"
 
 // easypanelApp names the app of an Easypanel service: every service is its
 // own app; the project is only a label (see App.Project).

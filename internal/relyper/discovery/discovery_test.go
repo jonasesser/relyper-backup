@@ -55,13 +55,13 @@ func TestBuild(t *testing.T) {
 	for _, a := range apps {
 		ids[a.ID] = true
 	}
-	for _, id := range []string{"compose:shop", "swarm_stack:crm", "container:nginx", "easypanel:blog_wordpress", "easypanel:blog_db"} {
+	for _, id := range []string{"compose:shop", "swarm_stack:crm", "container:nginx", "easypanel:blog_wordpress", "easypanel:blog_db", EasypanelSystemID, "container:relyper-backup"} {
 		if !ids[id] {
 			t.Errorf("missing app %s in %v", id, ids)
 		}
 	}
-	if len(apps) != 5 {
-		t.Errorf("unexpected apps (self, verify and easypanel containers must be skipped): %v", ids)
+	if len(apps) != 7 {
+		t.Errorf("unexpected apps (verify containers must be skipped; Easypanel and Relyper Backup are apps): %v", ids)
 	}
 
 	shop := inv.Find("compose:shop")
@@ -269,5 +269,18 @@ func TestBuildOldSwarmTasks(t *testing.T) {
 	}
 	if len(a.OldTasks) != 2 || a.OldTasks[0].Container != "hosting_budget.1.old1" {
 		t.Errorf("old tasks: %+v", a.OldTasks)
+	}
+}
+
+// The Docker guard runs as a Swarm service but is not an app; its service
+// must not be reported as stopped.
+func TestBuildGuardServiceNotStopped(t *testing.T) {
+	lbl := map[string]string{"com.docker.swarm.service.name": "gp-data_docker-guard", docker.RoleLabel: docker.RoleGuard}
+	containers := []docker.ContainerSummary{ctr("g1", "gp-data_docker-guard.1.x", "guard:latest", "running", lbl)}
+	var svc docker.Service
+	svc.Spec.Name = "gp-data_docker-guard"
+	apps, _ := Build(containers, []docker.Service{svc}, Options{})
+	if len(apps) != 0 {
+		t.Fatalf("guard must not be an app: %+v", apps)
 	}
 }

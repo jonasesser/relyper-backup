@@ -3,7 +3,9 @@ package infra
 import (
 	"context"
 	"errors"
+	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -48,7 +50,7 @@ const (
 // CoverageItem is one volume, bind mount or database of an app.
 type CoverageItem struct {
 	Service      string `json:"service"`
-	Kind         string `json:"kind"` // data, database, database_files, service
+	Kind         string `json:"kind"` // data, database, database_files, service, deployment, compose_directory, service_folder, easypanel_settings, app_definition
 	Name         string `json:"name"`
 	Path         string `json:"path,omitempty"`
 	State        string `json:"state"`
@@ -57,6 +59,8 @@ type CoverageItem struct {
 	SnapshotID   string `json:"snapshot_id,omitempty"`
 	Detail       string `json:"detail,omitempty"`
 	Class        string `json:"class,omitempty"` // data class, see discovery
+	// SQLite lists SQLite database files inside the data (relative paths).
+	SQLite []string `json:"sqlite,omitempty"`
 }
 
 // AppCoverage is the coverage of one app.
@@ -338,8 +342,11 @@ func (s *Service) Coverage(ctx context.Context) (*CoverageReport, error) {
 				if name == "" {
 					name = d.HostPath
 				}
-				item := CoverageItem{Service: svc.Name, Kind: "data", Name: name, Path: d.BackupPath, Class: d.Class}
+				item := CoverageItem{Service: svc.Name, Kind: "data", Name: name, Path: d.BackupPath, Class: d.Class, SQLite: d.SQLite}
 				switch {
+				case d.Class == discovery.ClassSource:
+					item.Kind, item.State = "source_mount", StateNotNeeded
+					item.Detail = "read-only mount through which Relyper Backup reads other apps' data; backed up through those apps (and the Easypanel card), not here"
 				case d.Class == discovery.ClassCache || d.Class == discovery.ClassTemporary:
 					item.State = StateNotNeeded
 					item.Detail = d.Class + " data is rebuilt by the app and not backed up"
@@ -409,6 +416,7 @@ func (s *Service) Coverage(ctx context.Context) (*CoverageReport, error) {
 			}
 			ac.Items = append(ac.Items, item)
 		}
+		ac.Items = append(ac.Items, s.configItems(cfg, runs, inv, &app, ac.Items, hookMembers, now)...)
 		ac.State = StateProtected
 		planSet := map[string]bool{}
 		for _, it := range ac.Items {
@@ -441,7 +449,8 @@ func (s *Service) Coverage(ctx context.Context) (*CoverageReport, error) {
 
 func allNotNeeded(items []CoverageItem) bool {
 	for _, it := range items {
-		if it.State != StateNotNeeded {
+		// A stopped service without data is only a marker, not data.
+		if it.State != StateNotNeeded && !(it.Kind == "service" && it.State == StateStopped) {
 			return false
 		}
 	}
@@ -577,6 +586,11 @@ func createPlanAction(ac *AppCoverage) string {
 	if len(own) > 0 {
 		return "Create a backup plan for this app; it also dumps its databases: " + strings.Join(own, ", ") + "."
 	}
+	for _, it := range ac.Items {
+		if len(it.SQLite) > 0 {
+			return "Create a backup plan for this app; its SQLite databases are backed up with the " + it.Name + " volume."
+		}
+	}
 	var other []string
 	for _, l := range ac.DatabaseLinks {
 		switch {
@@ -591,4 +605,91 @@ func createPlanAction(ac *AppCoverage) string {
 		return "Create a backup plan for this app. Its database runs in " + strings.Join(other, ", ") + ": protect that too, e.g. with one tag group for both."
 	}
 	return "Create a backup plan for this app (no database found in it)."
+}
+
+// configItems are the settings every app has besides its data: for an
+// Easypanel service its folder (code/) and Easypanel's own settings
+// (environment variables, domains, ports, Traefik, certificates), and for
+// every app its definition in the recovery report.
+func (s *Service) configItems(cfg *v1.Config, runs map[string]planRun, inv *discovery.Inventory, app *discovery.App, items []CoverageItem, hookMembers map[string]map[string]bool, now time.Time) []CoverageItem {
+	if app.Kind == discovery.KindGroup {
+		return nil
+	}
+	covered := func(item CoverageItem, p string) CoverageItem {
+		var covering []*v1.Plan
+		for _, pl := range cfg.Plans {
+			if planCovers(pl, p) {
+				covering = append(covering, pl)
+			}
+		}
+		return mergeItem(item, s.evaluate(cfg, runs, covering, p, now))
+	}
+	var out []CoverageItem
+	if inv.Docker.Easypanel && isEasypanelApp(inv, app) {
+		mounted := false
+		for _, d := range inv.Docker.EasypanelConfig {
+			if d.BackupPath == "" {
+				continue
+			}
+			mounted = true
+			for _, ps := range easypanelServices(inv, app) {
+				dir := filepath.Join(d.BackupPath, "projects", ps[0], ps[1])
+				if st, err := os.Stat(dir); err == nil && st.IsDir() {
+					out = append(out, covered(CoverageItem{Service: ps[1], Kind: "service_folder", Name: "Easypanel service folder (code/, files)", Path: dir, Class: "configuration"}, dir))
+				}
+			}
+			// Easypanel's settings: the item is as good as the worst entry.
+			item := CoverageItem{Kind: "easypanel_settings", Name: "Easypanel settings (environment variables, domains, ports, Traefik, certificates)", Path: d.BackupPath, Class: "configuration", State: StateProtected}
+			entries := easypanelEntries(d.BackupPath)
+			if len(entries) == 0 {
+				item.State = StateUnprotected
+			}
+			for _, e := range entries {
+				ev := covered(CoverageItem{}, e)
+				if stateRank[ev.State] >= stateRank[item.State] {
+					item = mergeItem(item, ev)
+				}
+			}
+			out = append(out, item)
+		}
+		if !mounted {
+			out = append(out, CoverageItem{Kind: "easypanel_settings", Name: "Easypanel settings (environment variables, domains, ports, Traefik, certificates)", State: StateNotReachable, Class: "configuration",
+				Detail: "mount /etc/easypanel:/etc/easypanel:ro into Relyper Backup to back them up"})
+		}
+	}
+	if app.Kind != discovery.KindSystem {
+		def := filepath.Join(s.InventoryDir(), "apps", discovery.Slug(app.ID)+".json")
+		// Every app plan carries the whole recovery report; the definition
+		// counts as protected only by a plan of this app (its own plan, its
+		// dump plan, or one that also backs up its data or settings).
+		var own []*v1.Plan
+		for _, pl := range cfg.Plans {
+			if !planCovers(pl, def) {
+				continue
+			}
+			id, _ := HookApp(pl)
+			mine := pl.Id == DefaultPlanID(app.ID) || hookMembers[id][app.ID]
+			for _, it := range append(items, out...) {
+				if it.Path != "" && it.Kind != "database" && planCovers(pl, it.Path) {
+					mine = true
+				}
+			}
+			if mine {
+				own = append(own, pl)
+			}
+		}
+		item := mergeItem(CoverageItem{Kind: "app_definition", Name: "app definition (images, mounts, ports, domains, networks; in the recovery report)", Path: def, Class: "configuration"}, s.evaluate(cfg, runs, own, def, now))
+		if app.Kind != discovery.KindEasypanel && len(app.ConfigDirs) == 0 {
+			item.Detail = appendDetail(item.Detail, "values of environment variables are not readable through the Docker guard; keep them where you deploy from")
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+func appendDetail(a, b string) string {
+	if a == "" {
+		return b
+	}
+	return a + "; " + b
 }

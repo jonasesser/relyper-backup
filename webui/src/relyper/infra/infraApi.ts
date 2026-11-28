@@ -12,7 +12,10 @@ export type DataItem = {
     | "database_files"
     | "service"
     | "deployment"
-    | "compose_directory";
+    | "compose_directory"
+    | "service_folder"
+    | "easypanel_settings"
+    | "app_definition";
   name: string;
   path?: string;
   state: string;
@@ -21,6 +24,8 @@ export type DataItem = {
   snapshot_id?: string;
   detail?: string;
   class?: string;
+  // SQLite database files inside the data (relative paths).
+  sqlite?: string[];
 };
 
 export type AppCoverage = {

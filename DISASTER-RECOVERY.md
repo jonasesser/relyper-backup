@@ -126,6 +126,52 @@ Replacing production data stays a manual step on the Docker host: it needs
 the app stopped and a person who checked the staged data. The MCP tool
 `get_app_recovery_guide` returns the same runbook.
 
+## Scenario 5: the whole Easypanel server is lost
+
+This rebuilds an Easypanel server from the snapshots with the plain restic
+CLI; Relyper Backup is not needed until the end. It needs plans for the
+**Easypanel** card (Easypanel's settings: environment variables, domains,
+ports, Traefik routes and certificates) and for every app (its Easypanel
+service folder, volumes and database dumps). With the recommended mounts
+(`/var/lib/docker/volumes` and `/etc/easypanel` at the same paths, see
+`DEPLOYMENT.md`) the paths in the snapshots are the host paths. This order
+follows Easypanel's documented layout but has not yet been rehearsed end to
+end on a real Easypanel server; rehearse it on a spare server.
+
+1. **New server**: same CPU architecture, Docker installed, then Easypanel
+   installed as usual (`curl -sSL https://get.easypanel.io | sh`), ideally
+   the same version as before. Do not create projects.
+2. **Stop the panel** so it does not overwrite its settings while you
+   restore: `docker service scale easypanel=0`.
+3. **Fetch restic and the recovery script** and list what you have:
+   `sh relyper-recover.sh plans` and `sh relyper-recover.sh report` (the
+   report names every app, its volumes, domains and restore order).
+4. **Restore Easypanel's settings** from the Easypanel plan into an empty
+   directory, then copy them over the fresh ones:
+   `sh relyper-recover.sh restore <easypanel-plan> /srv/restore/easypanel`,
+   then `cp -a /srv/restore/easypanel/etc/easypanel/. /etc/easypanel/`
+   (everything except `projects/`, which comes from the app plans).
+5. **Restore each app** from its plan into its own empty directory, then
+   copy back its service folder (`/etc/easypanel/projects/<project>/<service>`)
+   and its volumes. Create a named volume first (`docker volume create
+   <name>`) and copy into `/var/lib/docker/volumes/<name>/_data`.
+6. **Start the panel**: `docker service scale easypanel=1`. Easypanel reads
+   its restored settings; deploy the services from the panel (databases
+   first). Easypanel rebuilds apps from source (`code/` or Git) or pulls
+   their images.
+7. **Load the database dumps** with the `restore-databases.sh` of each app
+   snapshot (it checks checksums and asks before replacing a database).
+   SQLite databases come back with their volume, nothing to load.
+8. **DNS**: point the domains at the new server. Traefik's certificates are
+   restored with the settings; new ones are issued if needed.
+9. **Relyper Backup itself** last: deploy it (`DEPLOYMENT.md`), restore
+   `/config` from its own plan or your offline copy, and check the
+   Infrastructure page: every app should show protected again after the
+   next backups.
+
+The repository password and storage credentials must come from outside the
+lost server (see "The one rule").
+
 ## Databases
 
 Copying a live database directory does **not** produce a reliable backup.

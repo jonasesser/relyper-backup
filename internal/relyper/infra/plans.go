@@ -107,12 +107,20 @@ func (s *Service) ProposeAppPlan(ctx context.Context, appID string) (*AppPlan, e
 				continue
 			}
 			found = true
+			// The service folder: code/ holds the source Easypanel builds
+			// from (and files you added), volumes/ the bind-mounted data.
+			for _, ps := range easypanelServices(inv, app) {
+				dir := filepath.Join(d.BackupPath, "projects", ps[0], ps[1])
+				if st, err := os.Stat(dir); err == nil && st.IsDir() {
+					add(PlanItem{Path: dir, Kind: "config", Service: ps[1], Label: "Easypanel service folder " + ps[0] + "/" + ps[1] + " (code/: source and files of the service; volumes/: its mounted data)", Selected: true})
+				}
+			}
 			for _, e := range easypanelEntries(d.BackupPath) {
-				add(PlanItem{Path: e, Kind: "easypanel", Label: "Easypanel settings (domains, Traefik, certificates, panel data)", Selected: true})
+				add(PlanItem{Path: e, Kind: "easypanel", Label: easypanelEntryLabel(filepath.Base(e)), Selected: true})
 			}
 		}
 		if !found {
-			p.Skipped = append(p.Skipped, "Easypanel settings (/etc/easypanel: domains, Traefik, certificates) are not mounted into Relyper Backup; mount /etc/easypanel read-only")
+			p.Skipped = append(p.Skipped, "/etc/easypanel is not mounted into Relyper Backup, so this plan has none of the Easypanel settings: environment variables, domains, ports, Traefik routes and TLS certificates, and the service's code folder. Mount /etc/easypanel:/etc/easypanel:ro into relyper-backup (see DEPLOYMENT.md), then open this preview again.")
 		}
 	}
 	for _, svc := range app.Services {
@@ -140,6 +148,8 @@ func (s *Service) ProposeAppPlan(ctx context.Context, appID string) (*AppPlan, e
 			switch {
 			case d.Type == "tmpfs":
 				continue // in memory only
+			case d.Class == discovery.ClassSource:
+				continue // backed up through the apps that own the data
 			case d.DatabaseFiles:
 				continue // the dump protects them
 			case d.BackupPath == "":
@@ -161,8 +171,7 @@ func (s *Service) ProposeAppPlan(ctx context.Context, appID string) (*AppPlan, e
 		p.Items = append([]PlanItem{{Path: p.DumpDir, Kind: "dumps", Label: "database dumps (made right before every backup)", Selected: true, Required: true}}, p.Items...)
 	}
 	if len(p.Items) == 0 {
-		p.Paths = nil
-		return p, errors.New("nothing of this app can be backed up from here: mount its data into Relyper Backup first")
+		p.Warnings = append(p.Warnings, "This app has no data Relyper Backup can read: the plan backs up its definition (images, mounts, ports, domains) in the recovery report.")
 	}
 	// The recovery report travels with every app snapshot.
 	p.Items = append(p.Items, PlanItem{Path: s.InventoryDir(), Kind: "inventory", Label: "recovery report (services, images, domains, ports, restore order)", Selected: true, Required: true})
@@ -223,7 +232,7 @@ func underAny(x string, items []PlanItem) bool {
 }
 
 func isEasypanelApp(inv *discovery.Inventory, app *discovery.App) bool {
-	if app.Kind == discovery.KindEasypanel || app.Project != "" {
+	if app.Kind == discovery.KindEasypanel || app.Kind == discovery.KindSystem || app.Project != "" {
 		return true
 	}
 	for _, m := range app.Members {
@@ -380,4 +389,31 @@ func (s *Service) DumpNow(ctx context.Context, appID, actor string) (*dbdump.Man
 	}
 	s.record(actor, "dump", "ok", fmt.Sprintf("%s: %d dumps", appID, len(m.Dumps)))
 	return m, nil
+}
+
+// easypanelServices returns the Easypanel (project, service) pairs of an
+// app, also of the members of a group.
+func easypanelServices(inv *discovery.Inventory, app *discovery.App) [][2]string {
+	var out [][2]string
+	if app.Kind == discovery.KindEasypanel && app.Project != "" {
+		if svc, ok := strings.CutPrefix(app.ID, discovery.KindEasypanel+":"+app.Project+"_"); ok {
+			out = append(out, [2]string{app.Project, svc})
+		}
+	}
+	for _, m := range app.Members {
+		if a := inv.Find(m); a != nil && a.ID != app.ID {
+			out = append(out, easypanelServices(inv, a)...)
+		}
+	}
+	return out
+}
+
+// easypanelEntryLabel says what an entry of /etc/easypanel holds.
+func easypanelEntryLabel(name string) string {
+	switch name {
+	case "traefik":
+		return "Easypanel: Traefik routes and TLS certificates (domains)"
+	default:
+		return "Easypanel panel data (" + name + "): the service settings made in Easypanel, such as environment variables, domains, ports and the deploy source"
+	}
 }

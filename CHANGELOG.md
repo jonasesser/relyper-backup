@@ -8,6 +8,13 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 
 ### Added
 
+- Every app card lists its configuration as backup items: the app
+  definition in the recovery report, for Easypanel services the service
+  folder (`code/`) and Easypanel's settings (environment variables, domains,
+  ports, Traefik, certificates). Easypanel itself is listed as its own app.
+  SQLite databases inside volumes are found and shown. An app without a
+  plan is never "fully protected"; the Docker guard no longer shows up as a
+  stopped service. Disaster recovery for a lost Easypanel server. (#60)
 - App cards show which databases an app has and which database in another
   app it connects to (from `DATABASE_URL`, `*_HOST` and SQLite variables;
   the Docker guard passes on only engine, host and database name). Old

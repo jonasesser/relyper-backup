@@ -168,6 +168,21 @@ const ServiceDetails = ({ services }: { services: ServiceInfo[] }) => (
 );
 
 // Anonymous volumes carry a 64-hex name; bind mounts repeat their path.
+// kindLabel names the kind of a coverage item; settings of every kind are
+// "configuration", the item name says which.
+export const kindLabel = (kind: DataItem["kind"]) => {
+  switch (kind) {
+    case "deployment":
+      return "deployment definition";
+    case "service_folder":
+    case "easypanel_settings":
+    case "app_definition":
+      return "configuration";
+    default:
+      return kind.replace("_", " ");
+  }
+};
+
 export const itemName = (it: DataItem) => {
   if (it.name === it.path) return "";
   if (/^[0-9a-f]{64}$/.test(it.name))
@@ -352,11 +367,23 @@ const CreatePlanForm = ({
           {proposal.databases.join(", ")}. A failed dump fails the backup.
         </Text>
       )}
-      {(proposal.skipped || []).map((s) => (
-        <Text key={s} color="orange.500">
-          Not included: {s}
-        </Text>
-      ))}
+      {(proposal.skipped || []).length > 0 && (
+        <Box
+          borderWidth="1px"
+          borderColor="orange.400"
+          bg="orange.subtle"
+          rounded="md"
+          p={2}
+          data-testid="plan-missing"
+        >
+          <Text fontWeight="medium">Missing from this plan</Text>
+          <Stack as="ul" gap={0.5} pl={5} listStyleType="disc">
+            {proposal.skipped!.map((s) => (
+              <li key={s}>{s}</li>
+            ))}
+          </Stack>
+        </Box>
+      )}
       {(proposal.warnings || []).map((s) => (
         <Text key={s} color="orange.500">
           {s}
@@ -549,10 +576,11 @@ export const DatabaseSummary = ({
 }) => {
   const own = (app.items || []).filter((i) => i.kind === "database");
   const links = app.database_links || [];
+  const sqlite = (app.items || []).filter((i) => (i.sqlite || []).length > 0);
   return (
     <Box fontSize="sm" data-testid="db-summary">
       <Text fontWeight="medium">Databases</Text>
-      {own.length === 0 && links.length === 0 && (
+      {own.length === 0 && links.length === 0 && sqlite.length === 0 && (
         <Text color="fg.muted">
           No database found in this app (no database container and no database
           connection in its environment).
@@ -567,6 +595,14 @@ export const DatabaseSummary = ({
               : it.plan
                 ? `: dumped by plan ${it.plan}`
                 : ": dumped once the app has a backup plan"}
+          </li>
+        ))}
+        {sqlite.map((it) => (
+          <li key={"s" + it.path}>
+            SQLite in volume <b>{itemName(it) || it.path}</b>:{" "}
+            {it.sqlite!.join(", ")}. Backed up as files with the volume; a
+            backup taken during a write may need SQLite's own recovery when
+            restored.
           </li>
         ))}
         {links.map((l, i) => {
@@ -717,9 +753,7 @@ const AppCard = ({
               <Box minW="0" flex="1 1 240px">
                 <Text fontWeight="medium" wordBreak="break-word">
                   {it.service ? `${it.service} · ` : ""}
-                  {it.kind === "deployment"
-                    ? "deployment definition"
-                    : it.kind.replace("_", " ")}{" "}
+                  {kindLabel(it.kind)}{" "}
                   <Text as="span" color="fg.muted" fontWeight="normal">
                     {itemName(it)}
                   </Text>
@@ -1366,6 +1400,7 @@ export const InfraPage = () => {
                   ["swarm_stack", "Swarm stack"],
                   ["easypanel", "Easypanel"],
                   ["container", "Container"],
+                  ["system", "Hosting panel"],
                 ])}
                 {engines.length > 0 &&
                   select(
