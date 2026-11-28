@@ -8,6 +8,8 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 
 ### Added
 
+- Health check every 5 s while the container starts, so a zero-downtime
+  handover with an idle old container takes seconds. (#45)
 - Guided app restore on the Infrastructure page (stage, then a runbook in
   restore order), `RESTORE.md` and `restore-databases.sh` in every app
   snapshot, network dependencies and restore order in the recovery report,

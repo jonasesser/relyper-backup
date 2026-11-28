@@ -87,7 +87,7 @@ ENV BACKREST_PORT=0.0.0.0:9898 \
 VOLUME ["/config", "/data", "/cache"]
 EXPOSE 9898
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --start-interval=5s --retries=3 \
   CMD ["/usr/local/bin/relyper-healthcheck"]
 
 # tini -g forwards SIGTERM to the whole process group, so the server (a child

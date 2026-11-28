@@ -138,7 +138,8 @@ streams server-sent events). See `MCP.md`.
 - `GET /healthz` returns `200 {"status":"ok"}` without authentication and
   without any other information. The image's `HEALTHCHECK` runs
   `/usr/local/bin/relyper-healthcheck`, which probes the loopback address
-  derived from `BACKREST_PORT`.
+  derived from `BACKREST_PORT`. During the first 60 s it checks every 5 s
+  (`--start-interval`, Docker 25 or newer), afterwards every 30 s.
 - `tini -g` forwards `SIGTERM` to the whole process group, so the server cancels its
   context (scheduler and sync stop) and shuts the HTTP server down cleanly. Use a generous `stop_grace_period` (the compose file uses 2
   minutes). The container exits with code 143 (terminated by SIGTERM) after a
@@ -209,12 +210,15 @@ during a zero-downtime deploy the two containers hand over:
 3. The new container reports healthy, Easypanel stops the old one, the new
    one takes over the data directory and starts.
 
-The UI is unavailable for the few seconds between the old container
-stopping and the new one starting. If an operation runs longer than the
+With an idle old container the handover takes a few seconds: the old one
+confirms within 2 s and the health check of the new one runs every 5 s
+while it starts. The UI is unavailable for the few seconds between the old
+container stopping and the new one starting. If an operation runs longer than the
 maximum wait, it is interrupted; restic handles that safely (no snapshot,
 the next run redoes it). Keep **one replica**; two replicas on one `/data`
-cannot work. An old image without handover support is stopped after the
-maximum wait. `RELYPER_LOCK_WAIT_SECONDS` (default 300) is how long the new
+cannot work. An old image without handover support (before #37) does not confirm;
+it is stopped after the maximum wait, so that one deploy takes about two
+minutes. `RELYPER_LOCK_WAIT_SECONDS` (default 300) is how long the new
 container waits for the old one to stop before it gives up and restarts.
 
 Easypanel runs services as Swarm services named `<project>_<service>` and
