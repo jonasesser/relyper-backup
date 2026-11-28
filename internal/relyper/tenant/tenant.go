@@ -180,6 +180,9 @@ func (s *Store) saveLocked() error {
 	return os.Rename(tmp, s.path)
 }
 
+// Path is the file the store is saved in.
+func (s *Store) Path() string { return s.path }
+
 // List returns copies of all tenants sorted by ID.
 func (s *Store) List() []*Tenant {
 	s.mu.RLock()
@@ -501,7 +504,43 @@ func ObjectID(tenantID, name string) (string, error) {
 	if !regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,30}$`).MatchString(name) {
 		return "", errors.New("name must be up to 31 lowercase letters, digits or hyphens")
 	}
-	return IDPrefix + tenantID + "-" + name, nil
+	id := IDPrefix + tenantID + "-" + name
+	if len(id) > 50 {
+		return "", errors.New("name too long for this tenant (IDs have at most 50 characters)")
+	}
+	return id, nil
+}
+
+// AddOwnRepo records a repository the customer connected.
+func (s *Store) AddOwnRepo(id, repoID string) (*Tenant, error) {
+	return s.Update(id, func(t *Tenant) error {
+		for _, o := range s.tenants {
+			if o.ID != id && o.HasRepo(repoID) {
+				return fmt.Errorf("repository %s is already assigned to tenant %s", repoID, o.ID)
+			}
+		}
+		if !t.HasRepo(repoID) {
+			t.Repos = append(t.Repos, repoID)
+			sort.Strings(t.Repos)
+		}
+		if !t.IsOwnRepo(repoID) {
+			t.OwnRepos = append(t.OwnRepos, repoID)
+			sort.Strings(t.OwnRepos)
+		}
+		return nil
+	})
+}
+
+// SetKit replaces the kit record of a repository.
+func (s *Store) SetKit(id string, k Kit) (*Tenant, error) {
+	return s.Update(id, func(t *Tenant) error {
+		if !t.HasRepo(k.Repo) {
+			return errors.New("repository not assigned")
+		}
+		t.Kits = slices.DeleteFunc(t.Kits, func(o Kit) bool { return o.Repo == k.Repo })
+		t.Kits = append(t.Kits, k)
+		return nil
+	})
 }
 
 // Prune removes assignments of plans and repositories that no longer exist,

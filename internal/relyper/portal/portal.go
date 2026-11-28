@@ -32,6 +32,10 @@ type Deps struct {
 	StartBackup func(plan *v1.Plan) error
 	// Notifier sends test mails; nil when SMTP is not configured.
 	Notifier *Notifier
+	// Storage connects customer-owned repositories; nil disables it.
+	Storage *Storage
+	// Kits creates recovery kits; nil disables them.
+	Kits *Kits
 	// StaleAfter marks a plan stale without a successful backup (default 36h).
 	StaleAfter time.Duration
 	Now        func() time.Time
@@ -165,6 +169,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"admin":  m.admin,
 			"features": map[string]bool{
 				"email":   h.d.Notifier != nil,
+				"storage": h.d.Storage != nil,
+				"kits":    h.d.Kits != nil,
 			},
 		})
 	case r.Method == http.MethodGet && route == "overview":
@@ -193,6 +199,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.testNotify(w, r, m)
+	case parts[0] == "storage":
+		h.serveStorage(w, r, m, parts)
+	case parts[0] == "kits":
+		h.serveKits(w, r, m, parts)
 	default:
 		fail(w, http.StatusNotFound, "not found")
 	}

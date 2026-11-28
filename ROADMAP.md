@@ -104,6 +104,8 @@ Design: `docs/CONCEPT-MULTITENANT.md` (#25).
 | Design: tenants, isolation, notifications, own storage, recovery kit, escrow, threat model | done | #25 |
 | Tenants, separate portal sessions, read-only portal API, operator API | done | #29 |
 | E-mail per tenant (failure, warning, success, stale) | done | #29 – SMTP; not yet tested against a real mail server |
+| Own storage (S3, B2, Azure, REST), plan copy to own storage | done | #31 – validated, not yet tried against real accounts; SFTP later |
+| Recovery kit with separate customer key, optional escrow, `relyper-escrow` | done | #31 – tested against restic 0.19.1 |
 
 ## Open decisions
 

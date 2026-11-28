@@ -171,7 +171,7 @@ func Setup(d Deps) (*Routes, error) {
 		}}
 	}
 	if tenants != nil {
-		authed, unauthed := tenants.Finish(context.Background(), idp, idp.IsAdmin)
+		authed, unauthed := tenants.Finish(context.Background(), idp, idp.IsAdmin, d.Backrest)
 		for p, hd := range authed {
 			routes.Authed[p] = hd
 		}
