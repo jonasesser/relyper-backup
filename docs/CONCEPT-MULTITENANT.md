@@ -269,6 +269,7 @@ key anyway); it protects against loss of the customer's kit.
 | Portal token used on the operator API | Different issuer/audience and key purpose; operator verifier refuses it; tests. |
 | Operator token or cookie used in the portal | Portal accepts only portal tokens. |
 | Forged tenant claim | Claims come only from an ID token verified against the provider's JWKS (RS256 pinned). Tenant must exist and be active locally; the operator controls `external_ids`. |
+| Customer gets an operator role (self-assigned or a mistake in a team template) | In Relyper Identity only global admins maintain team role templates; tenant admins only assign existing teams of their own tenant. In addition, Relyper Backup counts operator roles only when the token's tenant is the operator tenant (`RELYPER_OIDC_OPERATOR_TENANT`, default `relyper`). |
 | Member removed at the provider | Session lifetime (`RELYPER_OIDC_SESSION_HOURS`). Suspending a tenant or removing an `external_id` takes effect on the next request. |
 | Customer runs commands on the server | No hooks, flags, command prefixes or env names from customers; `$` rejected; fixed field set per storage type. |
 | Server secrets sent to a customer endpoint | No env expansion of customer values (`$` rejected). |

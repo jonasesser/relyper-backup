@@ -20,6 +20,7 @@ export type IdentitySetupInfo = {
   public_url_set: boolean;
   login_role: string;
   admin_role: string;
+  operator_tenant?: string;
   scopes: string[];
   display_name: string;
   session_hours: number;
@@ -142,6 +143,11 @@ export const IdentitySetup = () => {
                 <>
                   login <Code>{s.login_role}</Code>, admin{" "}
                   <Code>{s.admin_role}</Code>
+                  {s.operator_tenant && s.operator_tenant !== "*" && (
+                    <>
+                      , only in tenant <Code>{s.operator_tenant}</Code>
+                    </>
+                  )}
                 </>
               }
             />

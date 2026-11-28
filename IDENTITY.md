@@ -32,6 +32,7 @@ package cannot be used directly because the server is written in Go.
 | `RELYPER_OIDC_REDIRECT_URI` | `<RELYPER_PUBLIC_URL>/auth/oidc/callback` | Must match the registration byte for byte and end in `/auth/oidc/callback`. |
 | `RELYPER_OIDC_LOGIN_ROLE` | `backup_user` | Role needed to sign in. |
 | `RELYPER_OIDC_ADMIN_ROLE` | `backup_admin` | Role needed to approve MCP requests and to create or revoke MCP tokens. It also allows signing in. |
+| `RELYPER_OIDC_OPERATOR_TENANT` | `relyper` | Tenant (claim `tenant` or `tenant_id`) in which the login and admin roles count. In other tenants they are ignored. `*` accepts them from any tenant, for providers without tenants. |
 | `RELYPER_OIDC_SCOPES` | `openid email profile roles` | Requested scopes. |
 | `RELYPER_OIDC_DISPLAY_NAME` | `Relyper` | Text on the sign-in buttons. |
 | `RELYPER_OIDC_SESSION_HOURS` | `8` | Lifetime of a web UI session (1–168). |
@@ -65,8 +66,9 @@ Web UI:
    accepted, so `alg: none` and HMAC tricks are refused. `iss`, `aud`,
    `exp`, `nonce`, `azp` and `sub` are checked, and an e-mail address is
    required.
-5. The `roles` claim must contain the login role or the admin role. Roles may
-   be an array or a space- or comma-separated string.
+5. The `roles` claim must contain the login role or the admin role, and the
+   token's tenant must be the operator tenant. Roles may be an array or a
+   space- or comma-separated string.
 6. The server signs a web UI session token (HS256, its own key in
    `<data>/relyper/oidc-session.key`). The browser picks the token up once
    through `POST /auth/oidc/session`, with an HttpOnly cookie that is valid

@@ -15,6 +15,7 @@ const base = {
   public_url_set: true,
   login_role: "backup_user",
   admin_role: "backup_admin",
+  operator_tenant: "relyper",
   scopes: ["openid"],
   display_name: "Relyper",
   session_hours: 8,

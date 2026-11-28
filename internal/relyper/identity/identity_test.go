@@ -102,7 +102,7 @@ func (f *fakeIdP) idToken(t *testing.T, nonce string) string {
 	now := time.Now()
 	claims := jwt.MapClaims{
 		"iss": f.srv.URL, "aud": testClientID, "sub": "user-123", "email": "jonas@example.com", "name": "Jonas",
-		"roles": []string{"backup_user"}, "iat": now.Unix(), "exp": now.Add(5 * time.Minute).Unix(), "nonce": nonce,
+		"roles": []string{"backup_user"}, "tenant": "relyper", "iat": now.Unix(), "exp": now.Add(5 * time.Minute).Unix(), "nonce": nonce,
 	}
 	if f.nonce != "" {
 		claims["nonce"] = f.nonce
@@ -388,5 +388,46 @@ func TestConfig(t *testing.T) {
 		if _, err := ConfigFromEnv(func(k string) string { return m[k] }); err == nil {
 			t.Errorf("case %d: expected an error", i)
 		}
+	}
+}
+
+func TestOperatorRolesOnlyInOperatorTenant(t *testing.T) {
+	// An operator role in a customer's tenant does not make an operator.
+	e := newEnv(t)
+	e.idp.claims = map[string]any{"roles": []string{"backup_admin"}, "tenant": "acme"}
+	e.get(t, e.idp.authorize(t, e.startLogin(t)))
+	if code, _ := e.handoff(t); code == http.StatusOK {
+		t.Fatal("backup_admin of tenant acme signed in as operator")
+	}
+
+	// Without any tenant claim neither.
+	e = newEnv(t)
+	e.idp.claims = map[string]any{"roles": []string{"backup_admin"}, "tenant": nil}
+	e.get(t, e.idp.authorize(t, e.startLogin(t)))
+	if code, _ := e.handoff(t); code == http.StatusOK {
+		t.Fatal("backup_admin without tenant signed in as operator")
+	}
+
+	// tenant_id is accepted as well.
+	e = newEnv(t)
+	e.idp.claims = map[string]any{"roles": []string{"backup_admin"}, "tenant": nil, "tenant_id": "relyper"}
+	e.get(t, e.idp.authorize(t, e.startLogin(t)))
+	_, out := e.handoff(t)
+	if ctx, _, ok := e.svc.VerifySession(context.Background(), out["token"]); !ok || !e.svc.IsAdmin(ctx) {
+		t.Fatal("backup_admin of the operator tenant should be admin")
+	}
+}
+
+func TestOperatorTenantConfig(t *testing.T) {
+	base := map[string]string{"RELYPER_OIDC_ISSUER": "https://idp.example", "RELYPER_OIDC_CLIENT_ID": "c", "RELYPER_OIDC_CLIENT_SECRET": "s"}
+	c, err := ConfigFromEnv(func(k string) string { return base[k] })
+	if err != nil || c.OperatorTenant != "relyper" {
+		t.Fatalf("default operator tenant %q, %v", c.OperatorTenant, err)
+	}
+	base["RELYPER_OIDC_OPERATOR_TENANT"] = "*"
+	c, _ = ConfigFromEnv(func(k string) string { return base[k] })
+	cl := &client{cfg: c}
+	if got := cl.operatorScoped([]string{"backup_admin"}, map[string]any{}); len(got) != 1 {
+		t.Fatalf("* should keep operator roles, got %v", got)
 	}
 }

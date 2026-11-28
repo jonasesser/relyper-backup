@@ -202,6 +202,7 @@ func (c *client) verifyIDToken(ctx context.Context, p *gooidc.Provider, raw, non
 		return nil, newErr("invalid_id_token", "The identity could not be verified.", "azp does not match the client")
 	}
 	id := claimsToIdentity(claims)
+	id.Roles = c.operatorScoped(id.Roles, claims)
 	if id.Subject == "" {
 		return nil, newErr("invalid_id_token", "The identity could not be verified.", "empty sub")
 	}
@@ -212,6 +213,25 @@ func (c *client) verifyIDToken(ctx context.Context, p *gooidc.Provider, raw, non
 		return nil, newErr("forbidden", "Your account has no access to Relyper Backup. Ask an administrator for the role "+c.cfg.LoginRole+".", "missing role "+c.cfg.LoginRole)
 	}
 	return id, nil
+}
+
+// operatorScoped drops LoginRole and AdminRole unless the token was issued
+// for the operator tenant. Relyper Identity puts only the roles of the
+// token's own tenant into "roles", so the tenant claim is the one to check.
+func (c *client) operatorScoped(roles []string, claims map[string]any) []string {
+	if c.cfg.OperatorTenant == AnyTenant {
+		return roles
+	}
+	tenant := asString(claims["tenant"])
+	if tenant == "" {
+		tenant = asString(claims["tenant_id"])
+	}
+	if tenant == c.cfg.OperatorTenant {
+		return roles
+	}
+	return slices.DeleteFunc(slices.Clone(roles), func(r string) bool {
+		return r == c.cfg.LoginRole || r == c.cfg.AdminRole
+	})
 }
 
 func (c *client) mayLogin(roles []string) bool {

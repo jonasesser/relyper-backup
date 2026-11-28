@@ -50,8 +50,8 @@ func TestPortalLogin(t *testing.T) {
 
 func TestOperatorTokenIsNoPortalSession(t *testing.T) {
 	e := newPortalEnv(t)
-	// Operator roles win even with a tenant claim.
-	e.idp.claims = map[string]any{"roles": []string{"backup_user", "backup_customer"}, "tenant": "acme"}
+	// In the operator tenant, operator roles win over customer roles.
+	e.idp.claims = map[string]any{"roles": []string{"backup_user", "backup_customer"}, "tenant": "relyper"}
 	resp := e.get(t, e.idp.authorize(t, e.startLogin(t)))
 	if got := resp.Header.Get("Location"); got != "/?relyper_login=1" {
 		t.Fatalf("callback redirects to %q", got)
@@ -62,6 +62,23 @@ func TestOperatorTokenIsNoPortalSession(t *testing.T) {
 	}
 	if _, ok := e.svc.VerifyPortal(out["token"]); ok {
 		t.Fatal("operator token accepted by the portal")
+	}
+}
+
+func TestOperatorRoleInCustomerTenantIsCustomer(t *testing.T) {
+	e := newPortalEnv(t)
+	// An operator role in a customer's tenant is ignored: portal only.
+	e.idp.claims = map[string]any{"roles": []string{"backup_admin", "backup_customer"}, "tenant": "acme"}
+	resp := e.get(t, e.idp.authorize(t, e.startLogin(t)))
+	if got := resp.Header.Get("Location"); got != "/?relyper_login=1#/portal" {
+		t.Fatalf("callback redirects to %q", got)
+	}
+	_, out := e.handoff(t)
+	if out["kind"] != "portal" {
+		t.Fatalf("kind %q", out["kind"])
+	}
+	if _, _, ok := e.svc.VerifySession(context.Background(), out["token"]); ok {
+		t.Fatal("customer became operator")
 	}
 }
 

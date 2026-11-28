@@ -39,15 +39,27 @@ type Config struct {
 	// DisplayName is shown on the sign-in button.
 	DisplayName string
 	SessionTTL  time.Duration
+	// OperatorTenant is the tenant whose members may hold LoginRole and
+	// AdminRole. Relyper Identity issues application roles per tenant, so
+	// an operator role in a customer's tenant (for example by a mistake in
+	// a team template) must not make that customer an operator. AnyTenant
+	// switches the check off for providers without tenants.
+	OperatorTenant string
 }
+
+// AnyTenant as OperatorTenant accepts operator roles from any tenant.
+const AnyTenant = "*"
 
 // DefaultScopes are the scopes requested from the provider.
 var DefaultScopes = []string{"openid", "email", "profile", "roles"}
 
 const (
-	defaultLoginRole  = "backup_user"
-	defaultAdminRole  = "backup_admin"
-	defaultSessionTTL = 8 * time.Hour
+	defaultLoginRole = "backup_user"
+	defaultAdminRole = "backup_admin"
+	// defaultOperatorTenant is the master tenant of Relyper Identity
+	// (RELYPER_MASTER_TENANT_ID there).
+	defaultOperatorTenant = "relyper"
+	defaultSessionTTL     = 8 * time.Hour
 )
 
 // ConfigFromEnv reads the configuration. It returns (nil, nil) when
@@ -61,14 +73,15 @@ func ConfigFromEnv(getenv func(string) string) (*Config, error) {
 		return nil, nil
 	}
 	c := &Config{
-		Issuer:      issuer,
-		ClientID:    strings.TrimSpace(getenv("RELYPER_OIDC_CLIENT_ID")),
-		RedirectURI: strings.TrimSpace(getenv("RELYPER_OIDC_REDIRECT_URI")),
-		LoginRole:   strings.TrimSpace(getenv("RELYPER_OIDC_LOGIN_ROLE")),
-		AdminRole:   strings.TrimSpace(getenv("RELYPER_OIDC_ADMIN_ROLE")),
-		DisplayName: strings.TrimSpace(getenv("RELYPER_OIDC_DISPLAY_NAME")),
-		SessionTTL:  defaultSessionTTL,
-		Scopes:      DefaultScopes,
+		Issuer:         issuer,
+		ClientID:       strings.TrimSpace(getenv("RELYPER_OIDC_CLIENT_ID")),
+		RedirectURI:    strings.TrimSpace(getenv("RELYPER_OIDC_REDIRECT_URI")),
+		LoginRole:      strings.TrimSpace(getenv("RELYPER_OIDC_LOGIN_ROLE")),
+		AdminRole:      strings.TrimSpace(getenv("RELYPER_OIDC_ADMIN_ROLE")),
+		DisplayName:    strings.TrimSpace(getenv("RELYPER_OIDC_DISPLAY_NAME")),
+		OperatorTenant: strings.TrimSpace(getenv("RELYPER_OIDC_OPERATOR_TENANT")),
+		SessionTTL:     defaultSessionTTL,
+		Scopes:         DefaultScopes,
 	}
 	c.ClientSecret = getenv("RELYPER_OIDC_CLIENT_SECRET")
 	if f := strings.TrimSpace(getenv("RELYPER_OIDC_CLIENT_SECRET_FILE")); f != "" {
@@ -86,6 +99,9 @@ func ConfigFromEnv(getenv func(string) string) (*Config, error) {
 	}
 	if c.AdminRole == "" {
 		c.AdminRole = defaultAdminRole
+	}
+	if c.OperatorTenant == "" {
+		c.OperatorTenant = defaultOperatorTenant
 	}
 	if c.DisplayName == "" {
 		c.DisplayName = "Relyper"

@@ -23,11 +23,23 @@ the operator.
 
 1. Relyper Identity sign-in must be configured (`IDENTITY.md`). Customers
    sign in only through it.
-2. In Relyper Identity, give customer users the role `backup_customer` or
-   `backup_customer_admin` (application roles of the Relyper Backup client)
-   and a tenant claim (`tenant`, a string or an object with `id`).
-   Operators keep `backup_user` / `backup_admin`; a user with an operator
-   role always gets the operator UI.
+2. In Relyper Identity:
+   - List the application roles `backup_admin`, `backup_user`,
+     `backup_customer` and `backup_customer_admin` in the `allowed_roles`
+     of the Relyper Backup client.
+   - In the master tenant (`relyper`), put `backup_admin` (or
+     `backup_user`) into the team template of your own team.
+   - In each customer's tenant, put `backup_customer` and
+     `backup_customer_admin` into that customer's team templates. Only
+     global admins maintain team templates; a customer's `tenant_admin` can
+     only add their own users to existing teams, so customers cannot give
+     themselves roles.
+   - The ID token's `tenant` claim is the user's first tenant, and `roles`
+     holds only the roles of that tenant (plus global roles).
+   Operator roles count only in the operator tenant
+   (`RELYPER_OIDC_OPERATOR_TENANT`, see `IDENTITY.md`). There they win over
+   customer roles; in any other tenant they are ignored, so a mistake in a
+   customer's team template does not make that customer an operator.
 3. Set the environment and restart:
 
 | Variable | Default | Meaning |

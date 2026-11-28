@@ -74,7 +74,7 @@ type Service struct {
 	client    *client
 	key       []byte
 	portalKey []byte // signs portal sessions; never accepted as operator session
-	consent ConsentCompleter
+	consent   ConsentCompleter
 
 	mu       sync.Mutex
 	txs      map[string]*pendingTx // by state

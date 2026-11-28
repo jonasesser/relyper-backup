@@ -26,6 +26,7 @@ type Setup struct {
 	PublicURLSet   bool     `json:"public_url_set"`
 	LoginRole      string   `json:"login_role"`
 	AdminRole      string   `json:"admin_role"`
+	OperatorTenant string   `json:"operator_tenant"`
 	Scopes         []string `json:"scopes"`
 	DisplayName    string   `json:"display_name"`
 	SessionHours   int      `json:"session_hours"`
@@ -47,7 +48,7 @@ type SetupOptions struct {
 var Variables = []string{
 	"RELYPER_OIDC_ISSUER", "RELYPER_OIDC_CLIENT_ID", "RELYPER_OIDC_CLIENT_SECRET",
 	"RELYPER_OIDC_CLIENT_SECRET_FILE", "RELYPER_OIDC_REDIRECT_URI", "RELYPER_PUBLIC_URL",
-	"RELYPER_OIDC_LOGIN_ROLE", "RELYPER_OIDC_ADMIN_ROLE", "RELYPER_OIDC_SCOPES",
+	"RELYPER_OIDC_LOGIN_ROLE", "RELYPER_OIDC_ADMIN_ROLE", "RELYPER_OIDC_OPERATOR_TENANT", "RELYPER_OIDC_SCOPES",
 	"RELYPER_OIDC_DISPLAY_NAME", "RELYPER_OIDC_SESSION_HOURS",
 }
 
@@ -76,11 +77,12 @@ func BuildSetup(o SetupOptions, r *http.Request) Setup {
 		PublicURLSet:   strings.TrimSpace(getenv("RELYPER_PUBLIC_URL")) != "",
 		LoginRole:      defaultLoginRole,
 		AdminRole:      defaultAdminRole,
+		OperatorTenant: defaultOperatorTenant,
 		Scopes:         DefaultScopes,
 		DisplayName:    "Relyper",
 		SessionHours:   int(defaultSessionTTL.Hours()),
 		Variables:      Variables,
-		RequiredClaims: "roles (list of role names) and sub; email or preferred_username for display",
+		RequiredClaims: "roles (list of role names), tenant (operators: the operator tenant) and sub; email or preferred_username for display",
 	}
 	if o.ConfigErr != nil {
 		s.Error = o.ConfigErr.Error()
@@ -88,6 +90,7 @@ func BuildSetup(o SetupOptions, r *http.Request) Setup {
 	if c := o.Config; c != nil {
 		s.Issuer, s.ClientID, s.SecretSet = c.Issuer, c.ClientID, c.ClientSecret != ""
 		s.LoginRole, s.AdminRole, s.Scopes = c.LoginRole, c.AdminRole, c.Scopes
+		s.OperatorTenant = c.OperatorTenant
 		s.DisplayName, s.SessionHours = c.DisplayName, int(c.SessionTTL.Hours())
 	} else if s.Configured {
 		s.Issuer = strings.TrimSpace(getenv("RELYPER_OIDC_ISSUER"))
