@@ -117,13 +117,18 @@ export const SetupWizard = ({
       const chosen = proposals.apps
         .filter((a) => include[a.app])
         .map((a) => a.app);
-      const res = await infraApi.createSetup(chosen, repo, {
-        ...opts,
-        excludes: excludes
-          .split("\n")
-          .map((s) => s.trim())
-          .filter(Boolean),
-      });
+      const res = await infraApi.createSetup(
+        chosen,
+        repo,
+        {
+          ...opts,
+          excludes: excludes
+            .split("\n")
+            .map((s) => s.trim())
+            .filter(Boolean),
+        },
+        proposals.mode,
+      );
       setResults(res);
       setProposals(null);
       onDone();
@@ -178,6 +183,9 @@ export const SetupWizard = ({
             {easypanel && (
               <option value="easypanel">Entire Easypanel environment</option>
             )}
+            <option value="databases">
+              Databases only (dumps of every database)
+            </option>
             <option value="apps">Selected projects and apps</option>
           </NativeSelect.Field>
           <NativeSelect.Indicator />
@@ -190,6 +198,14 @@ export const SetupWizard = ({
             code only when it was uploaded, not from Git, an image or a
             template). No volumes, databases, dependencies or build output. Add
             the app plans later.
+          </Text>
+        )}
+        {scope === "databases" && (
+          <Text color="fg.muted" data-testid="setup-scope-help">
+            One plan per app with a database server (PostgreSQL, MySQL, MariaDB,
+            MongoDB, Redis), named &lt;plan&gt;-db: a consistent dump right
+            before every backup, nothing else. Choose the databases below. App
+            files and SQLite files need the app plans.
           </Text>
         )}
         {scope === "apps" && (
@@ -230,6 +246,35 @@ export const SetupWizard = ({
             {proposals.apps.length === 0 && (
               <Text color="fg.muted">No apps found for this selection.</Text>
             )}
+            {proposals.mode === "databases" && proposals.apps.length > 1 && (
+              <Flex gap={2}>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => {
+                    const inc: Record<string, boolean> = {};
+                    proposals.apps.forEach(
+                      (a) => (inc[a.app] = !!a.plan && !a.existing_plan),
+                    );
+                    setInclude(inc);
+                  }}
+                >
+                  Select all
+                </Button>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => setInclude({})}
+                >
+                  Select none
+                </Button>
+              </Flex>
+            )}
+            {(proposals.notes || []).map((n) => (
+              <Text key={n} color="fg.muted">
+                {n}
+              </Text>
+            ))}
             {proposals.apps.map((a) => (
               <Box
                 key={a.app}
@@ -254,12 +299,16 @@ export const SetupWizard = ({
                   {a.existing_plan && (
                     <Badge colorPalette="orange">plan exists</Badge>
                   )}
-                  {a.size && (
+                  {proposals.mode === "databases" ? (
+                    <Text color="fg.muted">
+                      size known after the first dump
+                    </Text>
+                  ) : a.size ? (
                     <Text color="fg.muted">
                       {a.size.complete ? "" : "at least "}
                       {formatBytes(a.size.bytes)} in {a.size.files} files
                     </Text>
-                  )}
+                  ) : null}
                 </Flex>
                 {a.error && <Text color="red.500">{a.error}</Text>}
                 {a.plan?.databases && a.plan.databases.length > 0 && (
@@ -444,6 +493,9 @@ export const SetupWizard = ({
               </Field>
             </Flex>
             <Text color="fg.muted" data-testid="setup-estimate">
+              {proposals.mode === "databases"
+                ? "The size of the dumps is known after the first backup. "
+                : null}
               Data to back up: {chosenComplete ? "" : "at least "}
               {formatBytes(chosenBytes)} (measured now, before deduplication and
               compression; database dumps not included).{" "}

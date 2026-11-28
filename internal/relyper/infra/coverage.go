@@ -3,7 +3,6 @@ package infra
 import (
 	"context"
 	"errors"
-	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -632,11 +631,29 @@ func (s *Service) configItems(cfg *v1.Config, runs map[string]planRun, inv *disc
 				continue
 			}
 			mounted = true
+			// The service's deployment files (and uploaded code), as the
+			// plan of Easypanel or the app plan backs them up. Its data
+			// folders are data items of the service.
 			for _, ps := range easypanelServices(inv, app) {
 				dir := filepath.Join(d.BackupPath, "projects", ps[0], ps[1])
-				if st, err := os.Stat(dir); err == nil && st.IsDir() {
-					out = append(out, covered(CoverageItem{Service: ps[1], Kind: "service_folder", Name: "Easypanel service folder (code/, files)", Path: dir, Class: "configuration"}, dir))
+				restore, src := easypanelRestoreItems(dir, ps[0], ps[1], easypanelImage(inv, ps[0], ps[1]))
+				if len(restore) == 0 {
+					continue
 				}
+				name := "Easypanel deployment files (.env, compose, Dockerfile)"
+				if src.Code {
+					name = "Easypanel deployment files and uploaded code"
+				}
+				item := CoverageItem{Service: ps[1], Kind: "service_folder", Name: name, Path: dir, Class: "configuration", State: StateProtected}
+				for _, r := range restore {
+					ev := covered(CoverageItem{}, r.Path)
+					if stateRank[ev.State] >= stateRank[item.State] {
+						item = mergeItem(item, ev)
+					}
+				}
+				item.Path = dir
+				item.Detail = appendDetail(item.Detail, "code: "+src.Reason)
+				out = append(out, item)
 			}
 			// Easypanel's settings: the item is as good as the worst entry.
 			item := CoverageItem{Kind: "easypanel_settings", Name: "Easypanel settings (environment variables, domains, ports, Traefik, certificates)", Path: d.BackupPath, Class: "configuration", State: StateProtected}
@@ -645,6 +662,9 @@ func (s *Service) configItems(cfg *v1.Config, runs map[string]planRun, inv *disc
 				item.State = StateUnprotected
 			}
 			for _, e := range entries {
+				if _, wanted := easypanelEntryLabel(filepath.Base(e)); !wanted {
+					continue // Easypanel's own backups, logs: not needed
+				}
 				ev := covered(CoverageItem{}, e)
 				if stateRank[ev.State] >= stateRank[item.State] {
 					item = mergeItem(item, ev)
@@ -661,6 +681,7 @@ func (s *Service) configItems(cfg *v1.Config, runs map[string]planRun, inv *disc
 		}
 	}
 	if app.Kind != discovery.KindSystem {
+		easypanelApp := inv.Docker.Easypanel && isEasypanelApp(inv, app)
 		def := filepath.Join(s.InventoryDir(), "apps", discovery.Slug(app.ID)+".json")
 		// Every app plan carries the whole recovery report; the definition
 		// counts as protected only by a plan of this app (its own plan, its
@@ -671,7 +692,8 @@ func (s *Service) configItems(cfg *v1.Config, runs map[string]planRun, inv *disc
 				continue
 			}
 			id, _ := HookApp(pl)
-			mine := pl.Id == DefaultPlanID(app.ID) || hookMembers[id][app.ID]
+			mine := pl.Id == DefaultPlanID(app.ID) || hookMembers[id][app.ID] ||
+				(easypanelApp && planCoversEasypanelSettings(pl, inv)) // the Easypanel plan restores all its services
 			for _, it := range append(items, out...) {
 				if it.Path != "" && it.Kind != "database" && planCovers(pl, it.Path) {
 					mine = true
@@ -688,6 +710,17 @@ func (s *Service) configItems(cfg *v1.Config, runs map[string]planRun, inv *disc
 		out = append(out, item)
 	}
 	return out
+}
+
+// planCoversEasypanelSettings reports whether a plan backs up Easypanel's
+// settings database, i.e. is the plan of Easypanel itself.
+func planCoversEasypanelSettings(pl *v1.Plan, inv *discovery.Inventory) bool {
+	for _, d := range inv.Docker.EasypanelConfig {
+		if d.BackupPath != "" && planCovers(pl, filepath.Join(d.BackupPath, "data")) {
+			return true
+		}
+	}
+	return false
 }
 
 func appendDetail(a, b string) string {

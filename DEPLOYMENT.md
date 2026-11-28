@@ -326,6 +326,14 @@ in it either, nor `volumes/`, app volumes and databases; `.git`, `node_modules`,
 environments are excluded everywhere in this plan. The preview shows the measured size of every path. Add the app
 plans later.
 
+To start with the databases, choose "Databases only (dumps of every
+database)" in "Set up backups": one plan per app with a database server,
+named `<plan>-db`, with only the consistent dumps made right before every
+backup (and the recovery report). Choose the databases one by one or all.
+SQLite databases are files in the app's data and are backed up with the app
+plan. The app plan created later dumps the databases again; delete the `-db`
+plan then or keep it for a more frequent database schedule.
+
 Read-only binds that contain the data of other apps (such as
 `/var/lib/docker/volumes` and `/etc/easypanel` of Relyper Backup itself)
 are source mounts: they are never part of a plan of the app that mounts

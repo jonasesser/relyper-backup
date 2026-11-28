@@ -186,4 +186,52 @@ describe("SetupWizard", () => {
       scope: "easypanel_config",
     });
   });
+
+  it("creates dump-only plans for the selected databases", async () => {
+    const config = create(ConfigSchema, {
+      repos: [create(RepoSchema, { id: "hosteurope", uri: "sftp:u@h:/b" })],
+    });
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(
+        json(
+          url.endsWith("setup/propose")
+            ? {
+                ...proposals,
+                mode: "databases",
+                notes: ["budget: SQLite database data/db.sqlite is a file"],
+                apps: [
+                  {
+                    ...proposals.apps[0],
+                    plan: { ...proposals.apps[0].plan, plan_id: "app-shop-db" },
+                  },
+                ],
+              }
+            : url.endsWith("setup/create")
+              ? [{ app: "compose:shop", plan_id: "app-shop-db" }]
+              : {},
+        ),
+      ),
+    );
+    renderWithProviders(
+      <SetupWizard apps={[]} easypanel={false} onDone={() => {}} />,
+      { config },
+    );
+    fireEvent.change(screen.getByTestId("setup-scope"), {
+      target: { value: "databases" },
+    });
+    fireEvent.click(screen.getByTestId("setup-preview"));
+    const list = await screen.findByTestId("setup-proposals");
+    expect(list).toHaveTextContent("app-shop-db");
+    expect(list).toHaveTextContent("size known after the first dump");
+    expect(list).toHaveTextContent("SQLite database");
+    fireEvent.click(screen.getByTestId("setup-create"));
+    await screen.findByTestId("setup-results");
+    const call = fetchMock.mock.calls.find((c) =>
+      String(c[0]).endsWith("setup/create"),
+    )!;
+    expect(JSON.parse(String(call[1]!.body))).toMatchObject({
+      apps: ["compose:shop"],
+      mode: "databases",
+    });
+  });
 });

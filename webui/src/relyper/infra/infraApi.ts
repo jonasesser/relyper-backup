@@ -311,6 +311,8 @@ export type SetupProposals = {
   complete: boolean;
   storage?: Record<string, StorageInfo>;
   defaults: SetupOptions;
+  mode?: "databases";
+  notes?: string[];
 };
 
 export type SetupResult = { app: string; plan_id?: string; error?: string };
@@ -399,8 +401,12 @@ export const infraApi = {
     ),
   proposeSetup: (scope: string, apps?: string[]) =>
     call<SetupProposals>("setup/propose", { scope, apps }),
-  createSetup: (apps: string[], repo: string, options: SetupOptions) =>
-    call<SetupResult[]>("setup/create", { apps, repo, options }),
+  createSetup: (
+    apps: string[],
+    repo: string,
+    options: SetupOptions,
+    mode?: string,
+  ) => call<SetupResult[]>("setup/create", { apps, repo, options, mode }),
   dump: (app: string) => call<{ dumps: unknown[] }>("dump", { app }),
   verify: (app: string) => call<{ message: string }>("verify", { app }),
   restoreTest: (plan: string) =>

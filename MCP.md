@@ -111,7 +111,8 @@ For Docker apps (needs the Docker connection from `DEPLOYMENT.md`):
    repository – one plan per app: a hook dumps the databases right before
    every backup (a failed dump fails the backup), and the plan backs up the
    dumps plus the app's files. For many apps at once use
-   `propose_backup_setup` (scope `all`, `easypanel`, `easypanel_config` or
+   `propose_backup_setup` (scope `all`, `easypanel`, `easypanel_config`,
+   `databases` (dump-only plans; `create_backup_setup` with mode `databases`) or
    `apps`; shows the measured data size per path) and `create_backup_setup` (shared schedule,
    retention, excludes, upload limit, compression; defaults: databases every
    6 hours, files daily, 7 daily / 4 weekly / 12 monthly).

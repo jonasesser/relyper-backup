@@ -27,8 +27,23 @@ const (
 	// ScopeEasypanelConfig is Easypanel itself only: its settings and the
 	// configuration and code of every service, without app data.
 	ScopeEasypanelConfig = "easypanel_config"
-	ScopeApps            = "apps" // the apps listed in Apps
+	// ScopeDatabases is every app with a database server: one plan per app
+	// with only the consistent dumps of its databases.
+	ScopeDatabases = "databases"
+	ScopeApps      = "apps" // the apps listed in Apps
 )
+
+// ModeDatabases creates dump-only plans (scope databases).
+const ModeDatabases = "databases"
+
+// DatabasePlanID is the ID of the dump-only plan of an app.
+func DatabasePlanID(appID string) string {
+	id := DefaultPlanID(appID)
+	if len(id) > 61 {
+		id = id[:61]
+	}
+	return id + "-db"
+}
 
 // SetupRequest selects the apps.
 type SetupRequest struct {
@@ -68,7 +83,11 @@ type ItemSize struct {
 
 // SetupProposals is the wizard's preview.
 type SetupProposals struct {
-	Apps       []SetupProposal        `json:"apps"`
+	Apps []SetupProposal `json:"apps"`
+	// Mode is "databases" for dump-only plans (scope databases).
+	Mode string `json:"mode,omitempty"`
+	// Notes are hints about the selection, e.g. SQLite databases.
+	Notes      []string               `json:"notes,omitempty"`
 	TotalBytes int64                  `json:"total_bytes"`
 	Complete   bool                   `json:"complete"`          // every size was measured completely
 	Storage    map[string]StorageInfo `json:"storage,omitempty"` // by repository`
@@ -104,6 +123,8 @@ type SetupCreateRequest struct {
 	Apps    []string     `json:"apps"`
 	Repo    string       `json:"repo"`
 	Options SetupOptions `json:"options"`
+	// Mode "databases" creates dump-only plans (<plan>-db).
+	Mode string `json:"mode,omitempty"`
 }
 
 // SetupResult is the outcome for one app.
@@ -129,6 +150,12 @@ func (s *Service) selectApps(inv *discovery.Inventory, req SetupRequest) ([]disc
 				out = append(out, a)
 			}
 		}
+	case ScopeDatabases:
+		for _, a := range inv.Apps {
+			if a.Kind != discovery.KindGroup && hasRunningDatabase(a) {
+				out = append(out, a)
+			}
+		}
 	case ScopeEasypanelConfig:
 		if a := inv.Find(discovery.EasypanelSystemID); a != nil {
 			out = append(out, *a)
@@ -142,12 +169,28 @@ func (s *Service) selectApps(inv *discovery.Inventory, req SetupRequest) ([]disc
 			out = append(out, *a)
 		}
 	default:
-		return nil, fmt.Errorf("unknown scope %q (all, easypanel, easypanel_config or apps)", req.Scope)
+		return nil, fmt.Errorf("unknown scope %q (all, easypanel, easypanel_config, databases or apps)", req.Scope)
 	}
 	if len(out) > maxSetupApps {
 		return nil, fmt.Errorf("too many apps (%d); select fewer", len(out))
 	}
 	return out, nil
+}
+
+func hasRunningDatabase(a discovery.App) bool {
+	for _, svc := range a.Services {
+		if svc.Database != nil && svc.State != "stopped" && svc.State != "remote" {
+			return true
+		}
+	}
+	return false
+}
+
+// dumpOnly turns an app plan into a plan of only its database dumps.
+func dumpOnly(p *AppPlan) {
+	p.PlanID = DatabasePlanID(p.App)
+	p.choose([]string{p.DumpDir})
+	p.Notes = append(p.Notes, "Only the database dumps (and the recovery report); the app's files need the app plan.")
 }
 
 // ProposeSetup previews the plans for the selected apps, with measured sizes.
@@ -169,12 +212,30 @@ func (s *Service) ProposeSetup(ctx context.Context, req SetupRequest) (*SetupPro
 		plans[p.Id] = true
 	}
 	out := &SetupProposals{Apps: []SetupProposal{}, Complete: true, Defaults: DefaultSetupOptions()}
+	if req.Scope == ScopeDatabases {
+		out.Mode = ModeDatabases
+		for _, a := range inv.Apps {
+			if a.Kind == discovery.KindGroup {
+				continue
+			}
+			for _, svc := range a.Services {
+				for _, d := range svc.Data {
+					for _, f := range d.SQLite {
+						out.Notes = append(out.Notes, fmt.Sprintf("%s: SQLite database %s is a file in the app's data; it is backed up with the app plan", a.Name, f))
+					}
+				}
+			}
+		}
+	}
 	deadline := time.Now().Add(sizeTimeLimit * 3)
 	for _, a := range apps {
 		sp := SetupProposal{App: a.ID, Name: a.Name, Kind: a.Kind}
 		p, err := s.ProposeAppPlan(ctx, a.ID)
 		if err != nil {
 			sp.Error = err.Error()
+		}
+		if p != nil && req.Scope == ScopeDatabases {
+			dumpOnly(p)
 		}
 		if p != nil && len(p.Paths) > 0 {
 			sp.Plan = p
@@ -321,9 +382,20 @@ func (s *Service) CreateSetup(ctx context.Context, req SetupCreateRequest, actor
 			cron = o.DatabaseCron
 		}
 		res := SetupResult{App: app}
+		var planID string
+		var paths []string
+		if err == nil && req.Mode == ModeDatabases {
+			if len(p.Databases) == 0 {
+				err = errors.New("no running database to dump")
+			} else {
+				planID, paths = DatabasePlanID(app), []string{p.DumpDir}
+			}
+		} else if req.Mode != "" && req.Mode != ModeDatabases {
+			err = fmt.Errorf("unknown mode %q", req.Mode)
+		}
 		if err == nil {
 			p, err = s.CreateAppPlan(ctx, CreateAppPlanRequest{
-				AppID: app, RepoID: req.Repo,
+				AppID: app, RepoID: req.Repo, PlanID: planID, Paths: paths,
 				Schedule:  &v1.Schedule{Schedule: &v1.Schedule_Cron{Cron: cron}, Clock: v1.Schedule_CLOCK_LOCAL},
 				Retention: ret, Excludes: o.Excludes, BackupFlags: flags,
 			}, actor)

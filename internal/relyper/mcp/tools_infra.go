@@ -56,7 +56,7 @@ type PinSnapshotOut struct {
 }
 
 type ProposeSetupIn struct {
-	Scope string   `json:"scope" jsonschema:"all (every app on the Docker host), easypanel (Easypanel itself and every Easypanel service), easypanel_config (one small plan for Easypanel itself: its settings and the code of every service, without app volumes and databases) or apps (the apps listed in app_ids)"`
+	Scope string   `json:"scope" jsonschema:"all (every app on the Docker host), easypanel (Easypanel itself and every Easypanel service), easypanel_config (one small plan for Easypanel itself: its settings and the deployment files of every service, without app volumes and databases), databases (one dump-only plan per app with a database server; create them with mode databases) or apps (the apps listed in app_ids)"`
 	Apps  []string `json:"app_ids,omitempty" jsonschema:"app IDs from discover_apps, for scope apps"`
 }
 
@@ -64,6 +64,7 @@ type CreateSetupIn struct {
 	Apps    []string            `json:"app_ids" jsonschema:"app IDs to create one plan each for"`
 	RepoID  string              `json:"repo_id"`
 	Options *infra.SetupOptions `json:"options,omitempty" jsonschema:"default: databases every 6 hours (15 */6 * * *), files daily 02:30, keep 7 daily, 4 weekly, 12 monthly"`
+	Mode    string              `json:"mode,omitempty" jsonschema:"databases: dump-only plans (<plan>-db) with just the database dumps, as proposed by scope databases; empty: full app plans"`
 }
 
 type CreateSetupOut struct {
@@ -191,7 +192,7 @@ func registerInfraTools(r *registrar) {
 			if in.Options != nil {
 				o = *in.Options
 			}
-			res, err := inf.CreateSetup(ctx, infra.SetupCreateRequest{Apps: in.Apps, Repo: in.RepoID, Options: o}, c.actor())
+			res, err := inf.CreateSetup(ctx, infra.SetupCreateRequest{Apps: in.Apps, Repo: in.RepoID, Options: o, Mode: in.Mode}, c.actor())
 			if err != nil {
 				return nil, err
 			}

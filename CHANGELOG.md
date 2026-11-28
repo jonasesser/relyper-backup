@@ -8,6 +8,12 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 
 ### Added
 
+- Set up backups: "Databases only" creates one dump-only plan
+  (`<plan>-db`) per app with a database server, selectable one by one; SQLite
+  files are listed and stay with the app plans. The plan of Easypanel now
+  counts in the coverage: Easypanel's settings, the deployment files and the
+  app definition of every Easypanel app are protected by it (Easypanel's own
+  backups and logs are not required). (#71)
 - Easypanel-only plan: code only of services whose code was uploaded (not
   from Git, an image or a template); the preview lists the source of every
   service. (#69)

@@ -171,3 +171,30 @@ func TestProposeEasypanelSystemPlan(t *testing.T) {
 		t.Fatalf("scope: %v %v", apps, err)
 	}
 }
+
+func TestDatabasesOnlySetup(t *testing.T) {
+	root := t.TempDir()
+	s := &Service{s: Settings{DumpDir: filepath.Join(root, "dumps"), DumpCommand: "relyper-dbdump"}}
+	pg := &discovery.Database{Engine: "postgres"}
+	s.inv = &discovery.Inventory{Docker: discovery.Host{Available: true}, Apps: []discovery.App{
+		{ID: "compose:shop", Name: "shop", Kind: discovery.KindCompose, Services: []discovery.Service{
+			{Name: "db", State: "running", Database: pg, Data: []discovery.Data{{Type: "volume", HostPath: "/v/pg", BackupPath: "/v/pg", ContainerPath: "/var/lib/postgresql/data", DatabaseFiles: true, Class: discovery.ClassDatabase}}},
+			{Name: "web", State: "running", Data: []discovery.Data{{Type: "volume", HostPath: "/v/up", BackupPath: "/v/up", ContainerPath: "/up", Class: discovery.ClassPersistent}}}}},
+		{ID: "compose:blog", Name: "blog", Kind: discovery.KindCompose, Services: []discovery.Service{{Name: "web", State: "running"}}},
+		{ID: "compose:old", Name: "old", Kind: discovery.KindCompose, Services: []discovery.Service{{Name: "db", State: "stopped", Database: pg}}},
+		{ID: "group:all", Name: "all", Kind: discovery.KindGroup, Members: []string{"compose:shop"}, Services: []discovery.Service{{Name: "db", State: "running", Database: pg}}},
+	}}
+	s.invAt = time.Now()
+	apps, err := s.selectApps(s.inv, SetupRequest{Scope: ScopeDatabases})
+	if err != nil || len(apps) != 1 || apps[0].ID != "compose:shop" {
+		t.Fatalf("apps %v %v", apps, err)
+	}
+	p, err := s.ProposeAppPlan(context.Background(), "compose:shop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dumpOnly(p)
+	if p.PlanID != "app-shop-db" || !slices.Equal(p.Paths, []string{p.DumpDir, s.InventoryDir()}) || p.HookCommand == "" {
+		t.Fatalf("dump-only plan %s %v hook %q", p.PlanID, p.Paths, p.HookCommand)
+	}
+}
