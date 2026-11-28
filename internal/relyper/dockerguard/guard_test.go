@@ -34,7 +34,7 @@ func (f *fakeDocker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"Id": name + "-id", "Name": "/" + name,
 			"State":  map[string]any{"Running": running, "Status": "running"},
-			"Config": map[string]any{"Image": image, "Env": []string{"POSTGRES_PASSWORD=very-secret", "PATH=/bin"}, "Labels": labels},
+			"Config": map[string]any{"Image": image, "Env": []string{"POSTGRES_PASSWORD=very-secret", "PATH=/bin", "DATABASE_URL=postgres://u:very-secret@hosting_db:5432/budget"}, "Labels": labels},
 		})
 	}
 	switch key {
@@ -117,7 +117,12 @@ func TestReadsAreRedacted(t *testing.T) {
 		if code != 200 {
 			t.Fatalf("%s: %d %s", path, code, body)
 		}
-		if strings.Contains(body, "very-secret") || strings.Contains(body, "abc") || strings.Contains(body, "=") {
+		// Only the database connection survives, without user and password.
+		rest := strings.ReplaceAll(body, "DATABASE_URL=postgres://hosting_db:5432/budget", "")
+		if strings.Contains(path, "pg") && rest == body {
+			t.Fatalf("%s: database connection missing: %s", path, body)
+		}
+		if strings.Contains(body, "very-secret") || strings.Contains(body, "abc") || strings.Contains(rest, "=") {
 			t.Fatalf("%s: env values not removed: %s", path, body)
 		}
 	}

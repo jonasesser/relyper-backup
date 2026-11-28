@@ -538,16 +538,82 @@ const TagEditor = ({
   );
 };
 
+// DatabaseSummary says plainly which databases an app has or uses and how
+// they are protected.
+export const DatabaseSummary = ({
+  app,
+  appsById,
+}: {
+  app: AppCoverage;
+  appsById: Record<string, AppCoverage>;
+}) => {
+  const own = (app.items || []).filter((i) => i.kind === "database");
+  const links = app.database_links || [];
+  return (
+    <Box fontSize="sm" data-testid="db-summary">
+      <Text fontWeight="medium">Databases</Text>
+      {own.length === 0 && links.length === 0 && (
+        <Text color="fg.muted">
+          No database found in this app (no database container and no database
+          connection in its environment).
+        </Text>
+      )}
+      <Stack as="ul" gap={0.5} pl={5} listStyleType="disc">
+        {own.map((it, i) => (
+          <li key={"o" + i}>
+            {it.name} in service <b>{it.service}</b>
+            {it.state === "unsupported"
+              ? ": no dump support, files only"
+              : it.plan
+                ? `: dumped by plan ${it.plan}`
+                : ": dumped once the app has a backup plan"}
+          </li>
+        ))}
+        {links.map((l, i) => {
+          const target = l.app ? appsById[l.app] : undefined;
+          const what = `${l.from} uses ${l.engine}${
+            l.database && l.engine !== "sqlite"
+              ? ` database "${l.database}"`
+              : ""
+          }`;
+          if (l.engine === "sqlite")
+            return (
+              <li key={"l" + i}>
+                {l.from} uses an SQLite file <Code>{l.database}</Code>: it is
+                backed up with the volume that holds it.
+              </li>
+            );
+          return (
+            <li key={"l" + i}>
+              {what} on <b>{l.service || l.host}</b>
+              {target ? (
+                <>
+                  , which runs in app <b>{target.name}</b>. Its dump comes from
+                  that app's backup: <StateBadge state={target.protection} />
+                </>
+              ) : (
+                ` (${l.host}, not on this host: back it up where it runs)`
+              )}
+            </li>
+          );
+        })}
+      </Stack>
+    </Box>
+  );
+};
+
 const AppCard = ({
   app,
   services,
   reload,
   search = "",
+  appsById = {},
 }: {
   app: AppCoverage;
   services: ServiceInfo[];
   reload: () => void;
   search?: string;
+  appsById?: Record<string, AppCoverage>;
 }) => {
   const [showCreate, setShowCreate] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
@@ -562,9 +628,15 @@ const AppCard = ({
   const plan = (app.plans || [])[0];
   // Search hits other than the app's own name are listed, and services are
   // shown when the hit is in a service (image, domain, container, …).
-  const matches = searchMatches(app, services, search).filter(
-    (m) => m !== "app " + app.name && m !== "app " + app.app,
-  );
+  // When the app's own name matches, the other hits add nothing.
+  const allMatches = searchMatches(app, services, search);
+  const matches = allMatches.some(
+    (m) => m === "app " + app.name || m === "app " + app.app,
+  )
+    ? []
+    : allMatches;
+  const [showHistory, setShowHistory] = useState(false);
+  const oldTasks = app.old_tasks || [];
   const q = search.trim().toLowerCase();
   const serviceHit =
     !!q &&
@@ -625,7 +697,8 @@ const AppCard = ({
             <Text as="span" color="fg.muted">
               Matches:{" "}
             </Text>
-            {matches.join(" · ")}
+            {matches.slice(0, 4).join(" · ")}
+            {matches.length > 4 && ` · and ${matches.length - 4} more`}
           </Text>
         )}
         <Stack gap={0} fontSize="sm">
@@ -676,6 +749,7 @@ const AppCard = ({
             <Text color="fg.muted">Nothing to back up.</Text>
           )}
         </Stack>
+        {!isGroup && <DatabaseSummary app={app} appsById={appsById} />}
         {(app.notes || []).map((n) => (
           <Text key={n} fontSize="xs" color="fg.muted">
             {n}
@@ -693,6 +767,39 @@ const AppCard = ({
         )}
         {(showDetails || serviceHit) && services.length > 0 && (
           <ServiceDetails services={services} />
+        )}
+        {oldTasks.length > 0 && (
+          <Box fontSize="xs" color="fg.muted" data-testid="old-tasks">
+            <Text>
+              {oldTasks.length} stopped{" "}
+              {oldTasks.length === 1 ? "container" : "containers"} from earlier
+              deployments (kept by Swarm, not backed up; the data belongs to the
+              service).{" "}
+              <Button
+                size="xs"
+                variant="plain"
+                px={0}
+                h="auto"
+                textDecoration="underline"
+                onClick={() => setShowHistory(!showHistory)}
+                data-testid="old-tasks-toggle"
+              >
+                {showHistory ? "Hide" : "Show"}
+              </Button>
+            </Text>
+            {showHistory && (
+              <Stack as="ul" gap={0} pl={4} mt={1} listStyleType="disc">
+                {oldTasks.map((t) => (
+                  <li key={t.container}>
+                    <Text as="span" wordBreak="break-all">
+                      {t.container} · {t.image.slice(0, 40)} ·{" "}
+                      {t.status || t.state}
+                    </Text>
+                  </li>
+                ))}
+              </Stack>
+            )}
+          </Box>
         )}
         {(hasAppPlan || plan) && <TestResults app={app} />}
         <Flex gap={2} wrap="wrap">
@@ -1038,6 +1145,7 @@ export const InfraPage = () => {
   const all = cov?.apps || [];
   const apps = all.filter((a) => a.kind !== "group");
   const groups = all.filter((a) => a.kind === "group");
+  const appsById = Object.fromEntries(all.map((a) => [a.app, a]));
   const tags = Array.from(new Set(apps.flatMap((a) => a.tags || []))).sort();
   const counts = (s: string[]) =>
     apps.filter((a) => s.includes(a.protection)).length;
@@ -1283,6 +1391,7 @@ export const InfraPage = () => {
                     services={services[g.app] || []}
                     reload={() => reload()}
                     search={filter.text}
+                    appsById={appsById}
                   />
                 ))}
                 <Heading size="sm">Apps</Heading>
@@ -1305,6 +1414,7 @@ export const InfraPage = () => {
                 services={services[a.app] || []}
                 reload={() => reload()}
                 search={filter.text}
+                appsById={appsById}
               />
             ))}
             {(cov?.plans_without_app || []).length > 0 && (

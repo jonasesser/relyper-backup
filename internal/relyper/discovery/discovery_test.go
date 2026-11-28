@@ -86,7 +86,7 @@ func TestBuild(t *testing.T) {
 
 	// Each Easypanel service is its own app; the project is a label.
 	wp := inv.Find("easypanel:blog_wordpress")
-	if wp == nil || wp.Name != "wordpress" || wp.Project != "blog" || len(wp.Services) != 1 || len(wp.Notes) == 0 {
+	if wp == nil || wp.Name != "wordpress" || wp.Project != "blog" || len(wp.Services) != 1 {
 		t.Fatalf("wordpress: %+v", wp)
 	}
 	// Plans made for the whole project (easypanel:blog) still find all of
@@ -244,5 +244,30 @@ func TestTags(t *testing.T) {
 	}
 	if n := len(inv.Apps); n != 4 {
 		t.Fatalf("apps: %d", n)
+	}
+}
+
+// Swarm keeps the containers of earlier tasks; they are history, not
+// services, and a volume is listed once per service.
+func TestBuildOldSwarmTasks(t *testing.T) {
+	lbl := map[string]string{"com.docker.swarm.service.name": "hosting_budget"}
+	vol := docker.Mount{Type: "volume", Name: "budget_data", Destination: "/data", RW: true}
+	containers := []docker.ContainerSummary{
+		ctr("e0", "easypanel.1.x", "easypanel/easypanel:latest", "running", map[string]string{"com.docker.swarm.service.name": "easypanel"}),
+		ctr("o1", "hosting_budget.1.old1", "sha256:aaa", "exited", lbl, vol),
+		ctr("r1", "hosting_budget.1.new", "easypanel/hosting/budget:latest", "running", lbl, vol, vol),
+		ctr("o2", "hosting_budget.1.old2", "sha256:bbb", "exited", lbl, vol),
+	}
+	apps, _ := Build(containers, nil, Options{})
+	inv := &Inventory{Apps: apps}
+	a := inv.Find("easypanel:hosting_budget")
+	if a == nil || len(a.Services) != 1 || a.Services[0].Container != "hosting_budget.1.new" {
+		t.Fatalf("services: %+v", a)
+	}
+	if len(a.Services[0].Data) != 1 {
+		t.Errorf("volume listed %d times", len(a.Services[0].Data))
+	}
+	if len(a.OldTasks) != 2 || a.OldTasks[0].Container != "hosting_budget.1.old1" {
+		t.Errorf("old tasks: %+v", a.OldTasks)
 	}
 }

@@ -40,6 +40,28 @@ export type AppCoverage = {
   tags?: string[];
   // Members of a group app.
   members?: string[];
+  // Databases the app connects to that run elsewhere.
+  database_links?: DatabaseLink[];
+  // Containers of earlier Swarm tasks (old deployments): history only.
+  old_tasks?: OldTask[];
+};
+
+export type DatabaseLink = {
+  from: string;
+  engine: string;
+  host?: string;
+  database?: string;
+  var: string;
+  app?: string;
+  service?: string;
+};
+
+export type OldTask = {
+  service: string;
+  container: string;
+  image: string;
+  state: string;
+  status?: string;
 };
 
 export type DockerHost = {

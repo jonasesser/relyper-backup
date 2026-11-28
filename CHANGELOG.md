@@ -8,6 +8,12 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 
 ### Added
 
+- App cards show which databases an app has and which database in another
+  app it connects to (from `DATABASE_URL`, `*_HOST` and SQLite variables;
+  the Docker guard passes on only engine, host and database name). Old
+  Swarm task containers from earlier deployments are no longer listed as
+  services or backup targets (collapsed history instead); each volume is
+  listed once per service. (#59)
 - Every Easypanel service is its own app; the Easypanel project is shown as
   a label. Tags (Relyper Backup only, stored next to `config.json`) group
   apps across Easypanel projects: filter and search by tag, one backup plan

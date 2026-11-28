@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -79,6 +80,11 @@ type AppCoverage struct {
 	Project string   `json:"project,omitempty"`
 	Tags    []string `json:"tags,omitempty"`
 	Members []string `json:"members,omitempty"`
+	// DatabaseLinks are databases the app's services connect to that run
+	// elsewhere (another app on this host, or outside it).
+	DatabaseLinks []AppDatabaseLink `json:"database_links,omitempty"`
+	// OldTasks are containers of earlier Swarm tasks: history, not backed up.
+	OldTasks []discovery.OldTask `json:"old_tasks,omitempty"`
 }
 
 // CoverageReport covers all apps.
@@ -265,7 +271,15 @@ func (s *Service) Coverage(ctx context.Context) (*CoverageReport, error) {
 		}
 	}
 	for _, app := range inv.Apps {
-		ac := AppCoverage{App: app.ID, Name: app.Name, Kind: app.Kind, Notes: app.Notes, Project: app.Project, Tags: app.Tags, Members: app.Members}
+		ac := AppCoverage{App: app.ID, Name: app.Name, Kind: app.Kind, Notes: app.Notes, Project: app.Project, Tags: app.Tags, Members: app.Members, OldTasks: app.OldTasks}
+		for _, svc := range app.Services {
+			for _, l := range svc.DatabaseLinks {
+				if l.App != "" && slices.Contains(app.Members, l.App) {
+					continue // a member of the same group: its dump is in the plan
+				}
+				ac.DatabaseLinks = append(ac.DatabaseLinks, AppDatabaseLink{From: svc.Name, DatabaseLink: l})
+			}
+		}
 		// dumpPlansFor lists the plans that dump the databases of a service
 		// and the app whose dump directory they use. A service of a group is
 		// also protected by the dump plan of the app it belongs to.
@@ -443,6 +457,12 @@ func appendUnique(list []string, s string) []string {
 	return append(list, s)
 }
 
+// AppDatabaseLink is a database a service of the app connects to.
+type AppDatabaseLink struct {
+	From string `json:"from"` // the app's service
+	discovery.DatabaseLink
+}
+
 // protection derives the overall status and the recommended actions.
 func (s *Service) protection(ac *AppCoverage, now time.Time) {
 	count := map[string]int{}
@@ -457,7 +477,7 @@ func (s *Service) protection(ac *AppCoverage, now time.Time) {
 	act := func(a string) { ac.Actions = appendUnique(ac.Actions, a) }
 	if count[StateUnprotected] > 0 {
 		if len(ac.Plans) == 0 {
-			act("Create a backup plan for this app (it includes database dumps).")
+			act(createPlanAction(ac))
 		} else {
 			act("Add the unprotected items to a plan, or create the app backup plan.")
 		}
@@ -543,4 +563,32 @@ func mergeItem(base, eval CoverageItem) CoverageItem {
 		base.Detail = eval.Detail
 	}
 	return base
+}
+
+// createPlanAction says what an app plan would contain about databases,
+// so the action never promises dumps that do not exist.
+func createPlanAction(ac *AppCoverage) string {
+	var own []string
+	for _, it := range ac.Items {
+		if it.Kind == "database" && it.State != StateUnsupported {
+			own = append(own, it.Name+" ("+it.Service+")")
+		}
+	}
+	if len(own) > 0 {
+		return "Create a backup plan for this app; it also dumps its databases: " + strings.Join(own, ", ") + "."
+	}
+	var other []string
+	for _, l := range ac.DatabaseLinks {
+		switch {
+		case l.App != "":
+			other = appendUnique(other, l.App)
+		case l.Engine == "sqlite":
+		default:
+			other = appendUnique(other, l.Host+" (not on this host)")
+		}
+	}
+	if len(other) > 0 {
+		return "Create a backup plan for this app. Its database runs in " + strings.Join(other, ", ") + ": protect that too, e.g. with one tag group for both."
+	}
+	return "Create a backup plan for this app (no database found in it)."
 }

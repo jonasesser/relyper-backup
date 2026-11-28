@@ -86,6 +86,19 @@ type App struct {
 	ConfigDirs []DeploymentFile `json:"config_dirs,omitempty"`
 	// Notes are facts worth knowing (assumptions, data on other nodes).
 	Notes []string `json:"notes,omitempty"`
+	// OldTasks are leftover containers of earlier Swarm tasks (previous
+	// deployments, restarts). They are history, not backup targets: their
+	// volumes belong to the service and are covered through it.
+	OldTasks []OldTask `json:"old_tasks,omitempty"`
+}
+
+// OldTask is a stopped container of an earlier Swarm task.
+type OldTask struct {
+	Service   string `json:"service"`
+	Container string `json:"container"`
+	Image     string `json:"image"`
+	State     string `json:"state"`
+	Status    string `json:"status,omitempty"`
 }
 
 // Service is one container (or Swarm service) of an app.
@@ -109,6 +122,9 @@ type Service struct {
 	DependsOn           []string          `json:"depends_on,omitempty"`
 	Domains             []string          `json:"domains,omitempty"`
 	Labels              map[string]string `json:"labels,omitempty"` // without labels that may hold secrets
+	// DatabaseLinks are databases the service connects to (engine, host and
+	// database name from its environment; never credentials).
+	DatabaseLinks []DatabaseLink `json:"database_links,omitempty"`
 	// Member is the app a service of a group app belongs to.
 	Member string `json:"member,omitempty"`
 }
@@ -302,6 +318,11 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 		return a
 	}
 	seenSwarm := map[string]bool{}
+	// Swarm keeps the containers of earlier tasks (old deployments,
+	// restarts). Only running task containers are services (a service
+	// without one is handled from its spec below); with several running
+	// replicas on this node the first one stands for the service.
+	taken := map[string]bool{}
 	specs := map[string]docker.Service{}
 	for _, sv := range services {
 		specs[sv.Spec.Name] = sv
@@ -317,6 +338,17 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 		svc.Database = detectDatabase(c.Image)
 		if svc.Database == nil {
 			svc.UnsupportedDatabase = unsupportedEngine(c.Image)
+		}
+		if svc.SwarmService != "" && (c.State != "running" || taken[svc.SwarmService]) {
+			if c.State != "running" {
+				appID, appName, kind, svcName := classify(c, easypanel)
+				a := get(appID, appName, kind)
+				a.OldTasks = append(a.OldTasks, OldTask{Service: svcName, Container: c.Name(), Image: c.Image, State: c.State, Status: c.Status})
+			}
+			continue
+		}
+		if svc.SwarmService != "" {
+			taken[svc.SwarmService] = true
 		}
 		fillDetails(&svc, c, opt.Details[c.ID])
 		if sp, ok := specs[svc.SwarmService]; ok {
@@ -348,6 +380,9 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 			}
 			d := Data{Type: m.Type, Name: m.Name, HostPath: m.Source, ContainerPath: m.Destination, ReadOnly: !m.RW}
 			if isSocket(m.Source) {
+				continue
+			}
+			if hasData(svc.Data, m.Source, m.Destination) {
 				continue
 			}
 			d.BackupPath = opt.LocalPath(m.Source)
@@ -390,6 +425,7 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 		}
 		if rs.Database == nil {
 			rs.UnsupportedDatabase = unsupportedEngine(img)
+			rs.DatabaseLinks = databaseLinks(s.Spec.TaskTemplate.ContainerSpec.Env)
 		}
 		if state == "remote" {
 			a.Notes = appendOnce(a.Notes, "Some services run on another Swarm node. Their data is not reachable from this node.")
@@ -412,17 +448,25 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 		}
 		a.Services = append(a.Services, rs)
 	}
+	resolveDatabaseLinks(apps)
 	out := make([]App, 0, len(apps))
 	for _, a := range apps {
 		a.Project = easypanelProject(a.ID, a)
 		sort.Slice(a.Services, func(i, j int) bool { return a.Services[i].Name < a.Services[j].Name })
-		if a.Kind == KindEasypanel {
-			a.Notes = appendOnce(a.Notes, "Easypanel layout (Swarm service names project_service, data under /etc/easypanel/projects) is assumed from conventions and not yet verified on a real Easypanel host.")
-		}
+		sort.Slice(a.OldTasks, func(i, j int) bool { return a.OldTasks[i].Container < a.OldTasks[j].Container })
 		out = append(out, *a)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, easypanel
+}
+
+func hasData(list []Data, src, dst string) bool {
+	for _, d := range list {
+		if d.HostPath == src && d.ContainerPath == dst {
+			return true
+		}
+	}
+	return false
 }
 
 func hasDeployment(list []DeploymentFile, f string) bool {

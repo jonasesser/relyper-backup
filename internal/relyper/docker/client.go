@@ -378,6 +378,9 @@ type Service struct {
 			ContainerSpec struct {
 				Image  string            `json:"Image"`
 				Labels map[string]string `json:"Labels"`
+				// Env is only read for database connections (host and
+				// database name); values are never kept or logged.
+				Env    []string `json:"Env"`
 				Mounts []struct {
 					Type   string `json:"Type"`
 					Source string `json:"Source"`

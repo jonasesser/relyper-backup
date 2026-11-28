@@ -182,6 +182,9 @@ func fillDetails(svc *Service, c docker.ContainerSummary, d *docker.ContainerDet
 		svc.RestartPolicy = d.HostConfig.RestartPolicy.Name
 		svc.MemoryLimit = d.HostConfig.Memory
 		svc.CPULimit = float64(d.HostConfig.NanoCpus) / 1e9
+		if svc.Database == nil {
+			svc.DatabaseLinks = databaseLinks(d.Config.Env)
+		}
 	}
 }
 

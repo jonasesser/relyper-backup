@@ -324,7 +324,7 @@ knows the exact calls Relyper Backup makes and refuses everything else with
 
 | Allowed | Conditions |
 |---|---|
-| Reading containers, volumes, Swarm services and tasks, system info | Always. Values of environment variables are removed (other apps keep their secrets); names stay. |
+| Reading containers, volumes, Swarm services and tasks, system info | Always. Values of environment variables are removed (other apps keep their secrets); names stay. Only database connections stay readable without credentials (`DATABASE_URL=postgres://host:5432/name`, `DB_HOST=host`, SQLite file paths), so the Infrastructure page can show which database an app uses. |
 | Database dumps (`RELYPER_GUARD_DUMPS=1`) | Only `sh -c <script>` where the script is one of the fixed dump and statistics scripts of `internal/relyper/dbdump` for the detected engine; only in running containers of a known database image (postgres, mysql, mariadb, mongo, redis and variants); no extra environment variables, no other user, no TTY. |
 | Restore tests (`RELYPER_GUARD_VERIFY=1`) | Create only containers named `relyper-verify-<hex>`, from an image that already runs as a database on the host (never pulled), with network `none`, no mounts, not privileged, `no-new-privileges`, a process limit, label `relyper.verify=true` and only random hex passwords as environment. The guard builds the request itself. Start, copy the dump into the fixed restore directory, run the fixed restore scripts: only for containers this guard created. Remove: only containers labelled `relyper.verify=true` with that name pattern. |
 | Stop and restart containers (`RELYPER_GUARD_LIFECYCLE=1`) | Off by default. Needed for the MCP tools `stop_container` / `restart_container` (they also need an approval in the web UI). |

@@ -318,7 +318,9 @@ func (g *Guard) forwardFiltered(w http.ResponseWriter, r *http.Request, filter f
 
 // redactEnv replaces every "Env" list of "KEY=value" strings by the keys.
 // Environment variables of other containers hold their secrets; Relyper
-// Backup only needs to know which variables exist.
+// Backup only needs to know which variables exist, and which database a
+// container connects to (discovery.SafeDatabaseEnv keeps only engine, host
+// and database name of a connection, never user or password).
 func redactEnv(v any) {
 	switch t := v.(type) {
 	case map[string]any:
@@ -327,8 +329,11 @@ func redactEnv(v any) {
 				if list, ok := x.([]any); ok {
 					for i, e := range list {
 						if s, ok := e.(string); ok {
-							name, _, _ := strings.Cut(s, "=")
+							name, value, _ := strings.Cut(s, "=")
 							list[i] = name
+							if safe, ok := discovery.SafeDatabaseEnv(name, value); ok {
+								list[i] = name + "=" + safe
+							}
 						}
 					}
 					continue

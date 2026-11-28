@@ -423,4 +423,71 @@ describe("InfraPage", () => {
     await waitFor(() => expect(sent).not.toBeNull());
     expect(sent).toEqual({ app: "easypanel:b_blog", tags: ["shop", "x"] });
   });
+
+  it("shows linked databases and hides old Swarm tasks behind a toggle", async () => {
+    const budget = {
+      ...shop,
+      app: "easypanel:hosting_budget",
+      name: "budget",
+      kind: "easypanel",
+      project: "hosting",
+      databases: [],
+      items: [
+        {
+          service: "budget",
+          kind: "data" as const,
+          name: "budget_data",
+          path: "/v/budget",
+          state: "unprotected",
+        },
+      ],
+      database_links: [
+        {
+          from: "budget",
+          engine: "postgres",
+          host: "hosting_db",
+          database: "budget",
+          var: "DATABASE_URL",
+          app: "easypanel:hosting_db",
+          service: "db",
+        },
+      ],
+      old_tasks: [
+        {
+          service: "budget",
+          container: "hosting_budget.1.old",
+          image: "sha256:abc",
+          state: "exited",
+        },
+      ],
+    };
+    const db = {
+      ...shop,
+      app: "easypanel:hosting_db",
+      name: "db",
+      kind: "easypanel",
+      project: "hosting",
+      protection: "fully_protected",
+    };
+    fetchMock.mockResolvedValue(json(coverage([budget, db])));
+    renderWithProviders(<InfraPage />);
+    const card = await screen.findByTestId("app-easypanel:hosting_budget");
+    const dbs = card.querySelector("[data-testid=db-summary]")!;
+    expect(dbs).toHaveTextContent(
+      'budget uses postgres database "budget" on db',
+    );
+    expect(dbs).toHaveTextContent("which runs in app db");
+    const old = card.querySelector("[data-testid=old-tasks]")!;
+    expect(old).toHaveTextContent(
+      "1 stopped container from earlier deployments",
+    );
+    expect(old).not.toHaveTextContent("hosting_budget.1.old");
+    fireEvent.click(card.querySelector("[data-testid=old-tasks-toggle]")!);
+    expect(old).toHaveTextContent("hosting_budget.1.old");
+    // An app with its own database lists it.
+    const shopCard = screen.getByTestId("app-easypanel:hosting_db");
+    expect(
+      shopCard.querySelector("[data-testid=db-summary]"),
+    ).toHaveTextContent("postgres in service db");
+  });
 });

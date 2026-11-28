@@ -294,7 +294,7 @@ func registerConceptTools(r *registrar) {
 		func(ctx context.Context, c caller, in struct{}) (*EasypanelOut, error) {
 			found, p := inf.EasypanelProjects(ctx)
 			return &EasypanelOut{EasypanelDetected: found, Projects: p,
-				Note: "Detected from Docker metadata and /etc/easypanel/projects paths, not through an Easypanel API; not yet verified on a real Easypanel server. Domains are only shown when they are set as Traefik labels."}, nil
+				Note: "Detected from Docker metadata and /etc/easypanel/projects paths, not through an Easypanel API. Domains are only shown when they are set as Traefik labels."}, nil
 		})
 	addTool(r, read("list_detected_databases", "List detected databases", "Lists the database services (PostgreSQL, MySQL, MariaDB, MongoDB, Redis with dump support; other engines without), their image, state, the names of the credential variables the dump reads (never values) and their data paths."),
 		func(ctx context.Context, c caller, in struct{}) (*ListDatabasesOut, error) {
