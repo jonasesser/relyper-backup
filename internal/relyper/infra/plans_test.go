@@ -104,7 +104,7 @@ func TestProposeEasypanelSystemPlan(t *testing.T) {
 	root := t.TempDir()
 	ep := filepath.Join(root, "easypanel")
 	for _, d := range []string{"projects/hosting/budget/code/.git", "projects/hosting/budget/code/src", "projects/hosting/budget/volumes/data",
-		"projects/web/db", "projects/web/site/code/node_modules/x", "traefik", "data"} {
+		"projects/web/db/data", "projects/web/site/code/node_modules/x", "traefik", "data", "backups", "actions"} {
 		if err := os.MkdirAll(filepath.Join(ep, d), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -133,6 +133,16 @@ func TestProposeEasypanelSystemPlan(t *testing.T) {
 		filepath.Join(ep, "projects/web/site/code"), s.InventoryDir()}
 	if !slices.Equal(p.Paths, want) {
 		t.Fatalf("paths %v, want %v", p.Paths, want)
+	}
+	// Easypanel's own backups and action logs are offered but not chosen;
+	// data/ of a service is mounted app data and not offered.
+	for _, it := range p.Items {
+		if (filepath.Base(it.Path) == "backups" || filepath.Base(it.Path) == "actions") && it.Selected {
+			t.Errorf("%s must not be chosen", it.Path)
+		}
+		if strings.HasPrefix(it.Path, filepath.Join(ep, "projects/web/db")) {
+			t.Errorf("service data offered: %s", it.Path)
+		}
 	}
 	if !slices.Contains(p.Excludes, "node_modules") || !slices.Contains(p.Excludes, ".git") {
 		t.Fatalf("excludes %v", p.Excludes)

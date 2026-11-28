@@ -113,7 +113,12 @@ func (s *Service) ProposeAppPlan(ctx context.Context, appID string) (*AppPlan, e
 			found = true
 			if app.Kind == discovery.KindSystem {
 				for _, e := range easypanelEntries(d.BackupPath) {
-					add(PlanItem{Path: e, Kind: "easypanel", Label: easypanelEntryLabel(filepath.Base(e)), Selected: true})
+					label, wanted := easypanelEntryLabel(filepath.Base(e))
+					it := PlanItem{Path: e, Kind: "easypanel", Label: label, Selected: wanted}
+					if !wanted {
+						it.Note = "not needed to set Easypanel up again; choose it if you want it"
+					}
+					add(it)
 				}
 				// From every service folder only what is needed to deploy
 				// it again; data in volumes/ is in the app plans.
@@ -454,8 +459,9 @@ var deployFile = regexp.MustCompile(`(?i)^(\.env.*|.*compose.*\.ya?ml|dockerfile
 
 // easypanelRestoreItems returns what the Easypanel plan takes from a service
 // folder: for code from Git only the deployment files at the top of code/,
-// otherwise code/ (build output is excluded by easypanelBuildPatterns),
-// files and other folders of the service, never volumes/.
+// otherwise code/ (build output is excluded by easypanelBuildPatterns) and
+// the files at the top of the service folder; never volumes/ or other
+// folders, which hold mounted app data.
 func easypanelRestoreItems(dir, project, service string) []PlanItem {
 	name := project + "/" + service
 	svc := project + "_" + service
@@ -482,19 +488,27 @@ func easypanelRestoreItems(dir, project, service string) []PlanItem {
 			out = append(out, PlanItem{Path: p, Kind: "config", Service: svc, Label: name + ": code/ (not from Git; without dependencies and build output)", Selected: true})
 		case e.Type().IsRegular():
 			out = append(out, PlanItem{Path: p, Kind: "config", Service: svc, Label: name + ": " + e.Name(), Selected: true})
-		case e.IsDir():
-			out = append(out, PlanItem{Path: p, Kind: "config", Service: svc, Label: name + ": " + e.Name() + "/", Selected: true})
 		}
+		// Other folders (data/, mounts) hold data the service mounts;
+		// it belongs to the plan of the app.
 	}
 	return out
 }
 
 // easypanelEntryLabel says what an entry of /etc/easypanel holds.
-func easypanelEntryLabel(name string) string {
+func easypanelEntryLabel(name string) (string, bool) {
 	switch name {
+	case "data":
+		return "Easypanel settings database: projects, services, environment variables, domains, ports, deploy sources", true
 	case "traefik":
-		return "Easypanel: Traefik routes and TLS certificates (domains)"
+		return "Easypanel: Traefik routes and TLS certificates (domains)", true
+	case "backups":
+		return "Easypanel's own backup files (database backups made by Easypanel)", false
+	case "actions":
+		return "Easypanel deploy and action history (logs)", false
+	case "logs", "tmp", "cache":
+		return "Easypanel " + name + "/", false
 	default:
-		return "Easypanel panel data (" + name + "): the service settings made in Easypanel, such as environment variables, domains, ports and the deploy source"
+		return "Easypanel: " + name, true
 	}
 }

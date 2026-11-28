@@ -8,6 +8,8 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 
 ### Added
 
+- Easypanel-only plan: Easypanel's own backups and action logs and the
+  data folders of services are no longer in it; clearer labels. (#66)
 - Easypanel-only plan: from the service folders only the files needed to
   deploy again; code from Git, `.git`, dependencies and build output are
   left out. (#65)
