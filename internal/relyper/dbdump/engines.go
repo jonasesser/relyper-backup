@@ -37,6 +37,14 @@ type engine struct {
 	// same image (used by the restore script written next to the dumps).
 	// Empty for engines restored by copying a file (Redis).
 	importStdin string
+	// dumpDB writes a dump of the single database named in $RELYPER_DB to
+	// stdout; importDB loads such a dump from stdin into that database
+	// only, leaving the other databases of the instance alone. Empty for
+	// engines without per-database dumps (Redis).
+	dumpDB   string
+	importDB string
+	// skipDB names databases that are never dumped on their own.
+	skipDB []string
 }
 
 // readSecret expands VAR or VAR_FILE inside the container.
@@ -60,6 +68,9 @@ var engines = map[string]engine{
 		ready:       pgUser + `pg_isready -q -h 127.0.0.1 -U "$__u"`,
 		restore:     pgUser + `psql -q -U "$__u" -d postgres -f /tmp/relyper-restore/dump.sql >/tmp/relyper-restore/restore.log 2>&1; grep -E "^(psql:.*)?FATAL" /tmp/relyper-restore/restore.log && exit 1; exit 0`,
 		importStdin: readSecret("POSTGRES_PASSWORD") + pgUser + `PGPASSWORD="$__s" psql -q -U "$__u" -d postgres`,
+		dumpDB:      readSecret("POSTGRES_PASSWORD") + pgUser + `PGPASSWORD="$__s" exec pg_dump -U "$__u" -h 127.0.0.1 --clean --if-exists -d "$RELYPER_DB" 2>/dev/null || PGPASSWORD="$__s" exec pg_dump -U "$__u" --clean --if-exists -d "$RELYPER_DB"`,
+		importDB:    readSecret("POSTGRES_PASSWORD") + pgUser + `export PGPASSWORD="$__s"; createdb -U "$__u" "$RELYPER_DB" 2>/dev/null; exec psql -q -U "$__u" -d "$RELYPER_DB"`,
+		skipDB:      []string{"postgres"},
 		verifyEnv: func(pw, user string) []string {
 			env := []string{"POSTGRES_PASSWORD=" + pw}
 			if user != "" {
@@ -85,6 +96,8 @@ var engines = map[string]engine{
 		ready:       `mongosh --quiet --eval 'db.runCommand({ping:1}).ok' | grep -q 1`,
 		restore:     `mongorestore --quiet --archive=/tmp/relyper-restore/dump.archive.gz --gzip --drop`,
 		importStdin: readSecret("MONGO_INITDB_ROOT_PASSWORD") + `__u="${MONGO_INITDB_ROOT_USERNAME:-}"; if [ -n "$__u" ]; then exec mongorestore --quiet --archive --gzip --drop --username "$__u" --password "$__s" --authenticationDatabase admin; else exec mongorestore --quiet --archive --gzip --drop; fi`,
+		dumpDB:      readSecret("MONGO_INITDB_ROOT_PASSWORD") + `__u="${MONGO_INITDB_ROOT_USERNAME:-}"; if [ -n "$__u" ]; then exec mongodump --quiet --archive --gzip --db="$RELYPER_DB" --username "$__u" --password "$__s" --authenticationDatabase admin; else exec mongodump --quiet --archive --gzip --db="$RELYPER_DB"; fi`,
+		importDB:    readSecret("MONGO_INITDB_ROOT_PASSWORD") + `__u="${MONGO_INITDB_ROOT_USERNAME:-}"; if [ -n "$__u" ]; then exec mongorestore --quiet --archive --gzip --drop --nsInclude="$RELYPER_DB.*" --username "$__u" --password "$__s" --authenticationDatabase admin; else exec mongorestore --quiet --archive --gzip --drop --nsInclude="$RELYPER_DB.*"; fi`,
 		verifyEnv: func(string, string) []string {
 			return nil
 		},
@@ -102,6 +115,8 @@ func mysqlEngine() engine {
 		ready:       pw + tool + `MYSQL_PWD="$__s" "$__c" -u root --protocol=tcp -h 127.0.0.1 -N -B -e "select 1" >/dev/null 2>&1`,
 		restore:     pw + tool + `MYSQL_PWD="$__s" "$__c" -u root --protocol=tcp -h 127.0.0.1 < /tmp/relyper-restore/dump.sql`,
 		importStdin: pw + user + tool + `MYSQL_PWD="$__mp" exec "$__c" -u "$__mu"`,
+		dumpDB:      pw + user + tool + `__e=""; [ "$__mu" = root ] && __e=--events; MYSQL_PWD="$__mp" exec "$__d" -u "$__mu" --databases "$RELYPER_DB" --single-transaction --routines $__e --triggers --hex-blob --no-tablespaces`,
+		importDB:    pw + user + tool + `MYSQL_PWD="$__mp" exec "$__c" -u "$__mu"`,
 		verifyEnv: func(pw, _ string) []string {
 			return []string{"MARIADB_ROOT_PASSWORD=" + pw, "MYSQL_ROOT_PASSWORD=" + pw}
 		},

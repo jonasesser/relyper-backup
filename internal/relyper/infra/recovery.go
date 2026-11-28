@@ -292,7 +292,7 @@ func (s *Service) AppRecoveryGuide(ctx context.Context, appID, staging string) (
 	if len(dbs) > 0 {
 		dumpDir := strings.TrimRight(staging, "/") + dbdump.Dir(s.s.DumpDir, appID)
 		cmds := append(dbStart, fmt.Sprintf("sh %s/%s %s", shq(dumpDir), dbdump.RestoreScriptName, strings.Join(dbs, " ")))
-		detail := "Start the database containers, wait until they accept connections, then load the dumps. The script asks before replacing each database and checks the dump checksums; " + dbdump.RestoreNotesName + " next to it lists the expected content. Snapshots made before Relyper Backup wrote this script have none: load the dumps by hand as described in the recovery report."
+		detail := "Start the database containers, wait until they accept connections, then load the dumps. The script asks before replacing each database and checks the dump checksums; " + dbdump.RestoreNotesName + " next to it lists the expected content. A database server shared by several apps is replaced as a whole (all its databases): to load only one database, add --database=<service>/<name> (the databases are listed in " + dbdump.RestoreNotesName + "). Snapshots made before Relyper Backup wrote this script have none: load the dumps by hand as described in the recovery report."
 		if swarm {
 			detail += " For Swarm services pass the running task container names instead of the service names (docker ps)."
 		}

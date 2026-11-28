@@ -8,6 +8,9 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 
 ### Added
 
+- Database servers with several databases are also dumped per database;
+  `restore-databases.sh --database=<service>/<name>` restores one database
+  of a shared server without touching the others. (#53)
 - App plans back up the whole compose directory (with `.env`) and, for
   Easypanel apps, Easypanel's settings (domains, Traefik, certificates);
   the plan preview lets you choose every volume and bind mount; app

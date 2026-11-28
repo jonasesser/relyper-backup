@@ -13,6 +13,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -47,6 +49,18 @@ type Dump struct {
 	User      string           `json:"user,omitempty"` // database superuser name (PostgreSQL), not secret
 	Stats     map[string]int64 `json:"stats"`          // databases and their table/collection/key counts
 	Duration  string           `json:"duration"`
+	// Databases are extra dumps of each database on its own, for restoring
+	// one database of a shared instance without touching the others. Only
+	// made when the instance holds more than one database.
+	Databases []DatabaseDump `json:"databases,omitempty"`
+}
+
+// DatabaseDump is the dump of one database of an instance.
+type DatabaseDump struct {
+	Name   string `json:"name"`
+	File   string `json:"file"` // relative to the dump directory
+	Bytes  int64  `json:"bytes"`
+	SHA256 string `json:"sha256"`
 }
 
 // Dir is the dump directory of an app.
@@ -164,9 +178,69 @@ func dumpOne(ctx context.Context, c *docker.Client, s discovery.Service, dir str
 	if cw.n == 0 {
 		return nil, errors.New("dump is empty")
 	}
-	d.Bytes, d.SHA256, d.Duration = cw.n, hex.EncodeToString(h.Sum(nil)), time.Since(start).Round(time.Millisecond).String()
+	d.Bytes, d.SHA256 = cw.n, hex.EncodeToString(h.Sum(nil))
 	fmt.Fprintf(log, "dumped %s: %d bytes, sha256 %s, %d databases\n", s.Name, d.Bytes, d.SHA256[:12], len(d.Stats))
+	if err := dumpDatabases(ctx, c, s, e, d, dir, log); err != nil {
+		return nil, err
+	}
+	d.Duration = time.Since(start).Round(time.Millisecond).String()
 	return d, nil
+}
+
+// dumpDatabases dumps every database of a shared instance on its own, next
+// to the dump of the whole instance.
+func dumpDatabases(ctx context.Context, c *docker.Client, s discovery.Service, e engine, d *Dump, dir string, log io.Writer) error {
+	if e.dumpDB == "" {
+		return nil
+	}
+	var names []string
+	for n := range d.Stats {
+		if !slices.Contains(e.skipDB, n) {
+			names = append(names, n)
+		}
+	}
+	if len(names) < 2 {
+		return nil // one database: the instance dump is that database
+	}
+	sort.Strings(names)
+	sub := filepath.Join("databases", fileName(s.Name, "d"))
+	if err := os.MkdirAll(filepath.Join(dir, sub), 0o700); err != nil {
+		return err
+	}
+	used := map[string]bool{}
+	for _, n := range names {
+		file := fileName(n, e.ext)
+		for i := 2; used[file]; i++ {
+			file = fileName(fmt.Sprintf("%s_%d", n, i), e.ext)
+		}
+		used[file] = true
+		rel := filepath.Join(sub, file)
+		f, err := os.OpenFile(filepath.Join(dir, rel), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+		if err != nil {
+			return err
+		}
+		h := sha256.New()
+		cw := &countWriter{w: io.MultiWriter(f, h)}
+		var stderr bytes.Buffer
+		// The name goes in as an environment variable, never into the
+		// shell script.
+		res, err := c.Exec(ctx, s.ContainerID, []string{"sh", "-c", e.dumpDB}, []string{"RELYPER_DB=" + n}, "", cw, &limitedBuffer{buf: &stderr, max: 4096})
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+		if err == nil && res.ExitCode != 0 {
+			err = fmt.Errorf("exit %d: %s", res.ExitCode, strings.TrimSpace(stderr.String()))
+		}
+		if err == nil && cw.n == 0 {
+			err = errors.New("dump is empty")
+		}
+		if err != nil {
+			return fmt.Errorf("dumping database %s on its own: %w", n, err)
+		}
+		d.Databases = append(d.Databases, DatabaseDump{Name: n, File: rel, Bytes: cw.n, SHA256: hex.EncodeToString(h.Sum(nil))})
+	}
+	fmt.Fprintf(log, "dumped %d databases of %s on their own\n", len(d.Databases), s.Name)
+	return nil
 }
 
 func runCapture(ctx context.Context, c *docker.Client, container, script string) (string, error) {

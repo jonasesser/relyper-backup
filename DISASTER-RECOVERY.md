@@ -88,6 +88,9 @@ Next to the database dumps of an app, each snapshot contains:
 - `restore-databases.sh`: loads every dump into a running container of the
   same image (`sh restore-databases.sh [--yes] [service=container ...]`).
   It checks the checksum first and asks before replacing each database.
+  A database server with several databases is also dumped per database:
+  `--database=<service>/<name>` loads one of them without touching the
+  others (for servers shared by several apps).
 - `_inventory/recovery-report.md`: services, images, host paths, restore
   order and network dependencies of the app.
 

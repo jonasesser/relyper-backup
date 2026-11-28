@@ -72,6 +72,7 @@ func TestDumpAndVerify(t *testing.T) {
 	run(t, "exec", "relyper-it-pg", "psql", "-U", "app", "-d", "reports", "-c", "create table daily(d date)")
 	waitExec(t, "relyper-it-maria", `mariadb -uroot -pmaria-secret-456 --protocol=tcp -h 127.0.0.1 -e "select 1"`)
 	run(t, "exec", "relyper-it-maria", "mariadb", "-uroot", "-pmaria-secret-456", "crm", "-e", "create table leads(id int primary key, name varchar(50)); insert into leads values (1,'a'),(2,'b'); create table notes(id int);")
+	run(t, "exec", "relyper-it-maria", "mariadb", "-uroot", "-pmaria-secret-456", "-e", "create database billing; create table billing.invoices(id int); insert into billing.invoices values (1),(2),(3);")
 	waitExec(t, "relyper-it-redis", `redis-cli ping`)
 	for i := 0; i < 50; i++ {
 		run(t, "exec", "relyper-it-redis", "redis-cli", "set", "key"+string(rune('a'+i%26))+string(rune('a'+i/26)), "v")
@@ -102,7 +103,7 @@ func TestDumpAndVerify(t *testing.T) {
 	t.Log(log.String())
 	want := map[string]map[string]int64{
 		"pg":    {"shop": 2, "reports": 1, "postgres": 0},
-		"maria": {"crm": 2},
+		"maria": {"crm": 2, "billing": 1},
 		"redis": {"db0": 50},
 	}
 	for _, d := range m.Dumps {
@@ -196,6 +197,46 @@ func TestDumpAndVerify(t *testing.T) {
 	if n := run(t, "exec", "relyper-it-redis", "redis-cli", "dbsize"); n != "50" {
 		t.Fatalf("redis keys after restore: %q", n)
 	}
+
+	// Shared instances: every database is also dumped on its own, and the
+	// script restores one database without touching the others.
+	for _, d := range m.Dumps {
+		switch d.Service {
+		case "pg", "maria":
+			if len(d.Databases) != 2 {
+				t.Fatalf("%s: per-database dumps %+v", d.Service, d.Databases)
+			}
+		case "redis":
+			if len(d.Databases) != 0 {
+				t.Fatalf("redis has no per-database dumps: %+v", d.Databases)
+			}
+		}
+	}
+	run(t, "exec", "relyper-it-pg", "psql", "-U", "app", "-d", "shop", "-c", "delete from orders where id > 100")
+	run(t, "exec", "relyper-it-pg", "psql", "-U", "app", "-d", "reports", "-c", "create table kept(id int)")
+	run(t, "exec", "relyper-it-maria", "mariadb", "-uroot", "-pmaria-secret-456", "-e", "delete from billing.invoices; create table crm.kept(id int);")
+	for _, only := range []string{"pg/shop", "maria/billing"} {
+		out, err = exec.Command("sh", filepath.Join(dir, RestoreScriptName), "--yes", "--database="+only).CombinedOutput()
+		if err != nil {
+			t.Fatalf("restore %s: %v\n%s", only, err, out)
+		}
+		t.Logf("restore %s: %s", only, out)
+	}
+	if n := run(t, "exec", "relyper-it-pg", "psql", "-U", "app", "-d", "shop", "-At", "-c", "select count(*) from orders"); n != "500" {
+		t.Fatalf("orders after single-database restore: %q", n)
+	}
+	if n := run(t, "exec", "relyper-it-pg", "psql", "-U", "app", "-d", "reports", "-At", "-c", "select count(*) from information_schema.tables where table_name='kept'"); n != "1" {
+		t.Fatalf("the other database was touched: %q", n)
+	}
+	if n := run(t, "exec", "relyper-it-maria", "mariadb", "-uroot", "-pmaria-secret-456", "-N", "-B", "-e", "select count(*) from billing.invoices"); n != "3" {
+		t.Fatalf("invoices after single-database restore: %q", n)
+	}
+	if n := run(t, "exec", "relyper-it-maria", "mariadb", "-uroot", "-pmaria-secret-456", "-N", "-B", "-e", "select count(*) from information_schema.tables where table_name='kept'"); n != "1" {
+		t.Fatalf("the other mariadb database was touched: %q", n)
+	}
+	if out, err := exec.Command("sh", filepath.Join(dir, RestoreScriptName), "--yes", "--database=pg/nope").CombinedOutput(); err == nil {
+		t.Fatalf("unknown database accepted: %s", out)
+	}
 }
 
 func TestDumpAndVerifyMySQLMongo(t *testing.T) {
@@ -213,7 +254,7 @@ func TestDumpAndVerifyMySQLMongo(t *testing.T) {
 	waitExec(t, "relyper-it-mysql", `mysql -uroot -pmysql-secret-789 --protocol=tcp -h 127.0.0.1 -e "select 1"`)
 	run(t, "exec", "relyper-it-mysql", "mysql", "-uroot", "-pmysql-secret-789", "inventory", "-e", "create table items(id int primary key); insert into items values (1),(2),(3); create table places(id int);")
 	waitExec(t, "relyper-it-mongo", `mongosh --quiet -u root -p mongo-secret-012 --eval 'db.runCommand({ping:1}).ok'`)
-	run(t, "exec", "relyper-it-mongo", "mongosh", "--quiet", "-u", "root", "-p", "mongo-secret-012", "--eval", `db.getSiblingDB("app").users.insertMany([{a:1},{a:2}]); db.getSiblingDB("app").logs.insertOne({x:1})`)
+	run(t, "exec", "relyper-it-mongo", "mongosh", "--quiet", "-u", "root", "-p", "mongo-secret-012", "--eval", `db.getSiblingDB("app").users.insertMany([{a:1},{a:2}]); db.getSiblingDB("app").logs.insertOne({x:1}); db.getSiblingDB("other").things.insertOne({y:1})`)
 
 	ctrs, err := c.ListContainers(ctx)
 	if err != nil {
@@ -256,5 +297,17 @@ func TestDumpAndVerifyMySQLMongo(t *testing.T) {
 	}
 	if n := run(t, "exec", "relyper-it-mongo", "mongosh", "--quiet", "-u", "root", "-p", "mongo-secret-012", "--eval", `db.getSiblingDB("app").users.countDocuments()`); n != "2" {
 		t.Fatalf("users after restore: %q", n)
+	}
+	// One MongoDB database on its own; the other stays untouched.
+	run(t, "exec", "relyper-it-mongo", "mongosh", "--quiet", "-u", "root", "-p", "mongo-secret-012", "--eval", `db.getSiblingDB("app").users.drop(); db.getSiblingDB("other").things.insertOne({y:2})`)
+	out, err = exec.Command("sh", filepath.Join(Dir(base, app.ID), RestoreScriptName), "--yes", "--database=mongo/app").CombinedOutput()
+	if err != nil {
+		t.Fatalf("single-database restore: %v\n%s", err, out)
+	}
+	if n := run(t, "exec", "relyper-it-mongo", "mongosh", "--quiet", "-u", "root", "-p", "mongo-secret-012", "--eval", `db.getSiblingDB("app").users.countDocuments()`); n != "2" {
+		t.Fatalf("users after single-database restore: %q", n)
+	}
+	if n := run(t, "exec", "relyper-it-mongo", "mongosh", "--quiet", "-u", "root", "-p", "mongo-secret-012", "--eval", `db.getSiblingDB("other").things.countDocuments()`); n != "2" {
+		t.Fatalf("the other database was touched: %q", n)
 	}
 }
