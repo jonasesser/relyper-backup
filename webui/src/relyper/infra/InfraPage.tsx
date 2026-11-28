@@ -674,33 +674,47 @@ export const EasypanelDockerSteps = () => (
     data-testid="easypanel-steps"
   >
     <Text fontWeight="medium">On Easypanel</Text>
-    <Stack as="ol" gap={1} ps={5} mt={1} listStyleType="decimal">
+    <Text mt={1}>
+      Two App services in the same project, each with its own settings. Use one
+      random token for both.
+    </Text>
+    <Text fontWeight="medium" mt={3}>
+      1. New service <Code>docker-guard</Code>
+    </Text>
+    <Stack as="ul" gap={1} ps={5} mt={1} listStyleType="disc">
       <li>
-        In the same project, add an App service <Code>docker-guard</Code> built
-        from this repository with the Dockerfile{" "}
-        <Code>Dockerfile.docker-guard</Code>, the bind mount{" "}
-        <Code>/var/run/docker.sock</Code> → <Code>/var/run/docker.sock</Code>{" "}
-        and the environment{" "}
+        Build: this repository, Dockerfile <Code>Dockerfile.docker-guard</Code>.
+        No domain, no port.
+      </li>
+      <li>
+        Mount: <Code>/var/run/docker.sock</Code> →{" "}
+        <Code>/var/run/docker.sock</Code> (only this service gets the socket).
+      </li>
+      <li>
+        Environment:{" "}
         <Code>
-          RELYPER_GUARD_TOKEN=&lt;random token&gt; RELYPER_GUARD_DUMPS=1
+          RELYPER_GUARD_TOKEN=&lt;token&gt; RELYPER_GUARD_DUMPS=1
           RELYPER_GUARD_VERIFY=1
         </Code>
-        . Publish no domain and no port. The guard is the only service with the
-        Docker socket and allows only dumps and restore tests.
       </li>
-      <li>
-        On the Relyper Backup service set{" "}
-        <Code>RELYPER_DOCKER_HOST=tcp://&lt;project&gt;_docker-guard:2375</Code>{" "}
-        and <Code>RELYPER_DOCKER_TOKEN=&lt;the same token&gt;</Code>; Easypanel
-        reaches services as <Code>&lt;project&gt;_&lt;service&gt;</Code>.
-      </li>
-      <li>
-        Add the bind mounts <Code>/var/lib/docker/volumes</Code> and{" "}
-        <Code>/etc/easypanel/projects</Code>, each at the same path inside the
-        container (read-only if your Easypanel version allows it).
-      </li>
-      <li>Deploy, then press Refresh on this page.</li>
     </Stack>
+    <Text fontWeight="medium" mt={3}>
+      2. This service (Relyper Backup)
+    </Text>
+    <Stack as="ul" gap={1} ps={5} mt={1} listStyleType="disc">
+      <li>
+        Environment:{" "}
+        <Code>RELYPER_DOCKER_HOST=tcp://&lt;project&gt;_docker-guard:2375</Code>{" "}
+        and <Code>RELYPER_DOCKER_TOKEN=&lt;token&gt;</Code>
+      </li>
+      <li>
+        Mounts (the app data to back up, read-only if possible):{" "}
+        <Code>/var/lib/docker/volumes</Code> and{" "}
+        <Code>/etc/easypanel/projects</Code>, each at the same path inside. No
+        Docker socket here.
+      </li>
+    </Stack>
+    <Text mt={3}>Deploy both, then press Refresh on this page.</Text>
   </Box>
 );
 

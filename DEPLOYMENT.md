@@ -147,51 +147,71 @@ streams server-sent events). See `MCP.md`.
 
 ## Easypanel
 
-Easypanel is the primary target. Create an **App** service:
+Easypanel is the primary target. You create up to **two App services in
+the same project**. Each service has its own mounts and environment; nothing
+is set twice.
+
+| Service | Needed for | Gets the Docker socket |
+|---|---|---|
+| `relyper-backup` | always | **no** |
+| `docker-guard` | only for Docker apps and database dumps | yes, only this one |
+
+### Service `relyper-backup`
 
 1. **Source:** GitHub repository `jonasesser/relyper-backup`, branch `main`.
 2. **Build:** Dockerfile, path `Dockerfile`.
 3. **Domains / Proxy:** proxy port `9898`. Easypanel terminates TLS; always
    use the HTTPS domain to sign in.
-4. **Mounts:**
+4. **Mounts** (all on this service):
    - Volume `config` → `/config`
    - Volume `data` → `/data`
    - Volume `cache` → `/cache`
-   - Bind mount host path → `/sources/<name>` for every directory to back up.
-     Check whether your Easypanel version can mark a bind mount read-only. If
-     it cannot, the container can write there: protect the data by file
-     permissions and keep that risk in mind.
    - Bind mount or volume → `/restore` for restore staging.
-5. **Environment:** `TZ=Europe/Berlin` (or your zone). Nothing else is required.
+   - Bind mount host path → `/sources/<name>` for every directory to back up.
+   - Only with `docker-guard`: bind mount `/var/lib/docker/volumes` →
+     `/var/lib/docker/volumes` and `/etc/easypanel/projects` →
+     `/etc/easypanel/projects` (same path inside as on the host). These are
+     the app data that gets backed up.
+   - **Never** `/var/run/docker.sock` on this service.
+
+   Mark the bind mounts read-only if your Easypanel version offers it. If it
+   cannot, the container can write there: protect the data by file
+   permissions and keep that risk in mind.
+5. **Environment:**
+   - `TZ=Europe/Berlin` (or your zone).
+   - Only with `docker-guard`:
+     `RELYPER_DOCKER_HOST=tcp://<project>_docker-guard:2375` (Easypanel's
+     internal host name is `<project>_<service>`; check it on the service
+     page) and `RELYPER_DOCKER_TOKEN=<token>`.
 6. **Hostname:** keep the service name stable. restic stores the hostname in
    every snapshot, and Backrest uses it to match snapshots to plans.
 
-For application-aware backup of the other Easypanel projects, add the
-Relyper Docker guard as a second service in the same Easypanel project, then
-the Docker connection and mounts described in "Application-aware backup"
-below:
+### Service `docker-guard` (optional, for Docker apps and databases)
 
-1. Create a random token, e.g. `openssl rand -hex 32`.
-2. Create an **App** service `docker-guard`: source the same repository and
-   branch, build **Dockerfile** with path `Dockerfile.docker-guard`. No
-   domain, no published port.
-3. Mounts of `docker-guard`: bind mount host path `/var/run/docker.sock` →
-   `/var/run/docker.sock`. This is the only service that gets the socket.
-4. Environment of `docker-guard`: `RELYPER_GUARD_TOKEN=<token>`,
-   `RELYPER_GUARD_DUMPS=1`, `RELYPER_GUARD_VERIFY=1` (and
-   `RELYPER_GUARD_LIFECYCLE=1` only if MCP clients should stop/restart
-   containers).
-5. Environment of the Relyper Backup service:
-   `RELYPER_DOCKER_HOST=tcp://<project>_docker-guard:2375` (Easypanel's
-   internal host name is `<project>_<service>`; check it on the service
-   page) and `RELYPER_DOCKER_TOKEN=<token>`. Remove any Docker socket mount
-   and any `tecnativa/docker-socket-proxy` service from earlier setups.
-6. Bind mount `/var/lib/docker/volumes` and `/etc/easypanel/projects` at the
-   same path inside the Relyper Backup container (read-only if your
-   Easypanel version offers it).
-7. Deploy both and press Refresh on the Infrastructure page: it must show
-   the green "Docker guard" badge. While Docker is not reachable the page
-   shows these steps too.
+Create a random token first, e.g. `openssl rand -hex 32`. The same token goes
+into both services.
+
+1. **Source:** the same repository and branch.
+2. **Build:** Dockerfile, path `Dockerfile.docker-guard`.
+3. **Domains / Proxy:** none. Publish no domain and no port.
+4. **Mounts:** only one bind mount, `/var/run/docker.sock` →
+   `/var/run/docker.sock`.
+5. **Environment:** `RELYPER_GUARD_TOKEN=<token>`, `RELYPER_GUARD_DUMPS=1`,
+   `RELYPER_GUARD_VERIFY=1` (and `RELYPER_GUARD_LIFECYCLE=1` only if MCP
+   clients should stop/restart containers).
+
+Deploy both and press Refresh on the Infrastructure page: it must show the
+green "Docker guard" badge. While Docker is not reachable the page shows
+these steps too. Coming from an older setup: delete the
+`tecnativa/docker-socket-proxy` service and any socket mount on
+`relyper-backup`.
+
+Easypanel runs services as Swarm services named `<project>_<service>` and
+keeps bind-mounted data under `/etc/easypanel/projects/<project>/<service>/`;
+Relyper Backup groups apps by these conventions. They have not yet been
+checked on a real Easypanel server – look at the Infrastructure page after
+the first start and report anything that is grouped wrongly. Details of what
+the guard allows: "Relyper Docker guard" below.
 
 Easypanel's UI cannot set `read_only`, `cap_drop` or `no-new-privileges` for
 App services, so on Easypanel the container hardening of the compose files
@@ -220,12 +240,6 @@ cannot work. An old image without handover support (before #37) does not confirm
 it is stopped after the maximum wait, so that one deploy takes about two
 minutes. `RELYPER_LOCK_WAIT_SECONDS` (default 300) is how long the new
 container waits for the old one to stop before it gives up and restarts.
-
-Easypanel runs services as Swarm services named `<project>_<service>` and
-keeps bind-mounted data under `/etc/easypanel/projects/<project>/<service>/`;
-Relyper Backup groups apps by these conventions. They have not yet been
-checked on a real Easypanel server – look at the Infrastructure page after
-the first start and report anything that is grouped wrongly.
 
 ## Application-aware backup (Docker apps and databases)
 
