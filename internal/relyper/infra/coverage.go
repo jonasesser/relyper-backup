@@ -650,6 +650,9 @@ func (s *Service) configItems(cfg *v1.Config, runs map[string]planRun, inv *disc
 					item = mergeItem(item, ev)
 				}
 			}
+			if app.Kind != discovery.KindSystem && item.State != StateProtected {
+				item.Detail = appendDetail(item.Detail, "shared by all services; back them up with the plan of Easypanel itself ("+DefaultPlanID(discovery.EasypanelSystemID)+")")
+			}
 			out = append(out, item)
 		}
 		if !mounted {

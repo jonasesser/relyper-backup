@@ -392,6 +392,11 @@ const CreatePlanForm = ({
           {s}
         </Text>
       ))}
+      {(proposal.notes || []).map((s) => (
+        <Text key={s} color="fg.muted">
+          {s}
+        </Text>
+      ))}
       {repos.length === 0 ? (
         <AddRepoLink />
       ) : (

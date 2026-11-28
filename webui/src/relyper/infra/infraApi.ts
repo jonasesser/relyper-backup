@@ -184,6 +184,7 @@ export type AppPlan = {
   databases?: string[];
   skipped?: string[];
   warnings?: string[];
+  notes?: string[];
   items?: PlanItem[];
   excludes?: string[];
 };
@@ -288,6 +289,13 @@ export type SetupProposal = {
   existing_plan: boolean;
   has_databases: boolean;
   size?: { bytes: number; files: number; complete: boolean };
+  items?: {
+    path: string;
+    label: string;
+    bytes: number;
+    files: number;
+    complete: boolean;
+  }[];
 };
 
 export type SetupProposals = {

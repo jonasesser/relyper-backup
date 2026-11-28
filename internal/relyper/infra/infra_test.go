@@ -178,15 +178,18 @@ func TestMeasure(t *testing.T) {
 	dumps := filepath.Join(dir, "dumps")
 	os.MkdirAll(dumps, 0o755)
 	os.WriteFile(filepath.Join(dumps, "db.sql"), make([]byte, 5000), 0o644)
-	est := measure(context.Background(), []string{dumps, dir}, dumps, time.Second)
-	// The dump directory itself is skipped as a root but counted below dir.
+	est := measure(context.Background(), []string{dir}, nil, time.Second)
 	if est.Bytes != 6024 || est.Files != 3 || !est.Complete {
 		t.Fatalf("%+v", est)
 	}
-	if est := measure(context.Background(), []string{filepath.Join(dir, "missing")}, "", time.Second); est.Complete {
+	// Excluded directories are not counted.
+	if est := measure(context.Background(), []string{dir}, []string{dumps}, time.Second); est.Bytes != 1024 || est.Files != 2 {
+		t.Fatalf("excludes: %+v", est)
+	}
+	if est := measure(context.Background(), []string{filepath.Join(dir, "missing")}, nil, time.Second); est.Complete {
 		t.Fatalf("missing path counted as complete: %+v", est)
 	}
-	if est := measure(context.Background(), []string{dir}, "", 0); est.Complete {
+	if est := measure(context.Background(), []string{dir}, nil, 0); est.Complete {
 		t.Fatal("no time is not complete")
 	}
 }

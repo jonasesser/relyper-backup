@@ -474,6 +474,7 @@ func Build(containers []docker.ContainerSummary, services []docker.Service, opt 
 		}
 		a.Services = append(a.Services, rs)
 	}
+	markSourceMounts(apps)
 	resolveDatabaseLinks(apps)
 	out := make([]App, 0, len(apps))
 	for _, a := range apps {

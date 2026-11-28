@@ -8,6 +8,12 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 
 ### Added
 
+- Set up backups: "Easypanel configuration only (no app data)" creates one
+  small plan with Easypanel's settings and the code of every service,
+  without app volumes and databases; the preview shows the size of every
+  path. Easypanel's shared settings are no longer copied into every app
+  plan, and read-only binds holding other apps' data no longer count as
+  data of the app that mounts them. (#64)
 - Infrastructure tab "Storage": size of every repository on its storage
   and, per plan, kept snapshots, size of the latest backup and what the
   plan stores; "Measure now" runs restic stats. (#63)

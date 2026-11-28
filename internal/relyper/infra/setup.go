@@ -11,6 +11,8 @@ import (
 	"io/fs"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -21,8 +23,11 @@ import (
 // Setup scopes.
 const (
 	ScopeAll       = "all"       // every app on the Docker host
-	ScopeEasypanel = "easypanel" // every Easypanel project
-	ScopeApps      = "apps"      // the apps listed in Apps
+	ScopeEasypanel = "easypanel" // Easypanel itself and every Easypanel service
+	// ScopeEasypanelConfig is Easypanel itself only: its settings and the
+	// configuration and code of every service, without app data.
+	ScopeEasypanelConfig = "easypanel_config"
+	ScopeApps            = "apps" // the apps listed in Apps
 )
 
 // SetupRequest selects the apps.
@@ -50,6 +55,15 @@ type SetupProposal struct {
 	ExistingPlan bool          `json:"existing_plan"` // a plan with the proposed ID exists
 	HasDatabases bool          `json:"has_databases"`
 	Size         *SizeEstimate `json:"size,omitempty"`
+	// Items are the measured sizes of the chosen paths, largest first.
+	Items []ItemSize `json:"items,omitempty"`
+}
+
+// ItemSize is the measured size of one chosen path of a plan.
+type ItemSize struct {
+	Path  string `json:"path"`
+	Label string `json:"label"`
+	SizeEstimate
 }
 
 // SetupProposals is the wizard's preview.
@@ -111,9 +125,13 @@ func (s *Service) selectApps(inv *discovery.Inventory, req SetupRequest) ([]disc
 		out = append(out, inv.Apps...)
 	case ScopeEasypanel:
 		for _, a := range inv.Apps {
-			if a.Kind == "easypanel" {
+			if a.Kind == discovery.KindEasypanel || a.ID == discovery.EasypanelSystemID {
 				out = append(out, a)
 			}
+		}
+	case ScopeEasypanelConfig:
+		if a := inv.Find(discovery.EasypanelSystemID); a != nil {
+			out = append(out, *a)
 		}
 	case ScopeApps:
 		for _, id := range req.Apps {
@@ -124,7 +142,7 @@ func (s *Service) selectApps(inv *discovery.Inventory, req SetupRequest) ([]disc
 			out = append(out, *a)
 		}
 	default:
-		return nil, fmt.Errorf("unknown scope %q (all, easypanel or apps)", req.Scope)
+		return nil, fmt.Errorf("unknown scope %q (all, easypanel, easypanel_config or apps)", req.Scope)
 	}
 	if len(out) > maxSetupApps {
 		return nil, fmt.Errorf("too many apps (%d); select fewer", len(out))
@@ -162,11 +180,22 @@ func (s *Service) ProposeSetup(ctx context.Context, req SetupRequest) (*SetupPro
 			sp.Plan = p
 			sp.ExistingPlan = plans[p.PlanID]
 			sp.HasDatabases = len(p.Databases) > 0
-			limit := time.Until(deadline)
-			if limit > sizeTimeLimit {
-				limit = sizeTimeLimit
+			est := SizeEstimate{Complete: true}
+			for _, it := range p.Items {
+				if !it.Selected || it.Path == p.DumpDir {
+					continue // dumps are made at backup time
+				}
+				limit := time.Until(deadline)
+				if limit > sizeTimeLimit {
+					limit = sizeTimeLimit
+				}
+				e := measure(ctx, []string{it.Path}, p.Excludes, limit)
+				sp.Items = append(sp.Items, ItemSize{Path: it.Path, Label: it.Label, SizeEstimate: e})
+				est.Bytes += e.Bytes
+				est.Files += e.Files
+				est.Complete = est.Complete && e.Complete
 			}
-			est := measure(ctx, p.Paths, p.DumpDir, limit)
+			sort.SliceStable(sp.Items, func(i, j int) bool { return sp.Items[i].Bytes > sp.Items[j].Bytes })
 			sp.Size = &est
 			out.TotalBytes += est.Bytes
 			out.Complete = out.Complete && est.Complete
@@ -184,9 +213,8 @@ func (s *Service) ProposeSetup(ctx context.Context, req SetupRequest) (*SetupPro
 	return out, nil
 }
 
-// measure sums file sizes below paths. The dump directory is skipped: dumps
-// are made at backup time and their size is not known beforehand.
-func measure(ctx context.Context, paths []string, skip string, limit time.Duration) SizeEstimate {
+// measure sums file sizes below paths, without the excluded paths.
+func measure(ctx context.Context, paths []string, excludes []string, limit time.Duration) SizeEstimate {
 	est := SizeEstimate{Complete: true}
 	if limit <= 0 {
 		return SizeEstimate{}
@@ -194,9 +222,6 @@ func measure(ctx context.Context, paths []string, skip string, limit time.Durati
 	stop := time.Now().Add(limit)
 	errStop := errors.New("stop")
 	for _, root := range paths {
-		if skip != "" && root == skip {
-			continue
-		}
 		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				est.Complete = false
@@ -204,6 +229,9 @@ func measure(ctx context.Context, paths []string, skip string, limit time.Durati
 					return fs.SkipDir
 				}
 				return nil
+			}
+			if d.IsDir() && path != root && slices.Contains(excludes, path) {
+				return fs.SkipDir
 			}
 			if est.Files%1024 == 0 && (time.Now().After(stop) || ctx.Err() != nil) {
 				return errStop

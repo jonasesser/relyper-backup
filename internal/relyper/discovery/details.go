@@ -210,3 +210,49 @@ func mergeSorted(a, b []string) []string {
 	}
 	return sortedKeys(set)
 }
+
+// Host directories that hold the data of many apps. A read-only bind of
+// one of them is a source mount of a backup tool, not data of its own.
+var sourceRoots = map[string]bool{
+	"/": true, "/var/lib/docker": true, "/var/lib/docker/volumes": true,
+	"/etc/easypanel": true, "/etc/easypanel/projects": true,
+}
+
+// markSourceMounts classifies read-only binds that contain the data of
+// other apps as ClassSource. It catches Relyper Backup's own source mounts
+// when its container could not be recognized (e.g. a Swarm task whose
+// hostname differs) and other backup tools that read the whole host.
+func markSourceMounts(apps map[string]*App) {
+	type owner struct{ app, path string }
+	var others []owner
+	for id, a := range apps {
+		for _, s := range a.Services {
+			for _, d := range s.Data {
+				if d.HostPath != "" {
+					others = append(others, owner{id, path.Clean(d.HostPath)})
+				}
+			}
+		}
+	}
+	contains := func(id, dir string) bool {
+		for _, o := range others {
+			if o.app != id && o.path != dir && strings.HasPrefix(o.path, strings.TrimSuffix(dir, "/")+"/") {
+				return true
+			}
+		}
+		return false
+	}
+	for id, a := range apps {
+		for i := range a.Services {
+			for j := range a.Services[i].Data {
+				d := &a.Services[i].Data[j]
+				if d.Type != "bind" || !d.ReadOnly || d.HostPath == "" || d.Class == ClassSource {
+					continue
+				}
+				if p := path.Clean(d.HostPath); sourceRoots[p] || contains(id, p) {
+					d.Class = ClassSource
+				}
+			}
+		}
+	}
+}

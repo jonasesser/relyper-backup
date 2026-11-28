@@ -43,7 +43,7 @@ type SetTagsOut struct {
 }
 
 type ProposeSetupIn struct {
-	Scope string   `json:"scope" jsonschema:"all (every app on the Docker host), easypanel (every Easypanel project) or apps (the apps listed in app_ids)"`
+	Scope string   `json:"scope" jsonschema:"all (every app on the Docker host), easypanel (Easypanel itself and every Easypanel service), easypanel_config (one small plan for Easypanel itself: its settings and the code of every service, without app volumes and databases) or apps (the apps listed in app_ids)"`
 	Apps  []string `json:"app_ids,omitempty" jsonschema:"app IDs from discover_apps, for scope apps"`
 }
 
@@ -158,7 +158,7 @@ func registerInfraTools(r *registrar) {
 		func(ctx context.Context, c caller, in AppIn) (*infra.RecoveryGuide, error) {
 			return inf.AppRecoveryGuide(ctx, in.AppID, "")
 		})
-	addTool(r, read("propose_backup_setup", "Propose backup setup", "Backup setup wizard, step 1: proposes one backup plan per app for the whole Docker environment, all Easypanel projects or selected apps, with the measured size of the data to back up (a lower bound if measuring took too long), free repository storage where measured, existing plans and the default options. Changes nothing."),
+	addTool(r, read("propose_backup_setup", "Propose backup setup", "Backup setup wizard, step 1: proposes one backup plan per app for the whole Docker environment, all Easypanel projects or selected apps, with the measured size of the data to back up, per chosen path, largest first (a lower bound if measuring took too long), free repository storage where measured, existing plans and the default options. Changes nothing."),
 		func(ctx context.Context, c caller, in ProposeSetupIn) (*infra.SetupProposals, error) {
 			return inf.ProposeSetup(ctx, infra.SetupRequest{Scope: in.Scope, Apps: in.Apps})
 		})

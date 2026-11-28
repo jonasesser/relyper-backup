@@ -26,6 +26,7 @@ type AppPlan struct {
 	Databases   []string `json:"databases,omitempty"`
 	Skipped     []string `json:"skipped,omitempty"` // data that cannot be backed up from here, with the reason
 	Warnings    []string `json:"warnings,omitempty"`
+	Notes       []string `json:"notes,omitempty"` // information, no problem
 	// Items is everything the plan can back up, with a default choice.
 	// Paths holds the chosen ones; Excludes the paths of items that are
 	// not chosen but lie inside a chosen directory.
@@ -98,8 +99,9 @@ func (s *Service) ProposeAppPlan(ctx context.Context, appID string) (*AppPlan, e
 		}
 	}
 	// Easypanel keeps domains, Traefik routing, certificates and its own
-	// settings in the directories mounted into its container. The projects
-	// directory is left out: each app plan takes only its own project data.
+	// settings in /etc/easypanel. They are shared by all services, so they
+	// belong to the plan of Easypanel itself; an app plan takes only its
+	// own service folder.
 	if inv.Docker.Easypanel && isEasypanelApp(inv, app) {
 		found := false
 		for _, d := range inv.Docker.EasypanelConfig {
@@ -107,6 +109,22 @@ func (s *Service) ProposeAppPlan(ctx context.Context, appID string) (*AppPlan, e
 				continue
 			}
 			found = true
+			if app.Kind == discovery.KindSystem {
+				for _, e := range easypanelEntries(d.BackupPath) {
+					add(PlanItem{Path: e, Kind: "easypanel", Label: easypanelEntryLabel(filepath.Base(e)), Selected: true})
+				}
+				// The configuration and code of every service, without the
+				// data in volumes/ (that is in the app plans).
+				for _, ps := range easypanelFolders(d.BackupPath) {
+					dir := filepath.Join(d.BackupPath, "projects", ps[0], ps[1])
+					add(PlanItem{Path: dir, Kind: "config", Service: ps[0] + "_" + ps[1], Label: "Easypanel service folder " + ps[0] + "/" + ps[1] + " (code/ and files, without volumes/)", Selected: true})
+					if st, err := os.Stat(filepath.Join(dir, "volumes")); err == nil && st.IsDir() {
+						add(PlanItem{Path: filepath.Join(dir, "volumes"), Kind: "data", Service: ps[0] + "_" + ps[1], Label: "volumes/ of " + ps[0] + "/" + ps[1] + " (app data)",
+							Note: "app data; back it up with the plan of the app"})
+					}
+				}
+				continue
+			}
 			// The service folder: code/ holds the source Easypanel builds
 			// from (and files you added), volumes/ the bind-mounted data.
 			for _, ps := range easypanelServices(inv, app) {
@@ -115,9 +133,7 @@ func (s *Service) ProposeAppPlan(ctx context.Context, appID string) (*AppPlan, e
 					add(PlanItem{Path: dir, Kind: "config", Service: ps[1], Label: "Easypanel service folder " + ps[0] + "/" + ps[1] + " (code/: source and files of the service; volumes/: its mounted data)", Selected: true})
 				}
 			}
-			for _, e := range easypanelEntries(d.BackupPath) {
-				add(PlanItem{Path: e, Kind: "easypanel", Label: easypanelEntryLabel(filepath.Base(e)), Selected: true})
-			}
+			p.Notes = append(p.Notes, "The Easypanel settings (environment variables, domains, ports, Traefik routes, certificates) are shared by all services; they are backed up by the plan of Easypanel itself ("+DefaultPlanID(discovery.EasypanelSystemID)+").")
 		}
 		if !found {
 			p.Skipped = append(p.Skipped, "/etc/easypanel is not mounted into Relyper Backup, so this plan has none of the Easypanel settings: environment variables, domains, ports, Traefik routes and TLS certificates, and the service's code folder. Mount /etc/easypanel:/etc/easypanel:ro into relyper-backup (see DEPLOYMENT.md), then open this preview again.")
@@ -403,6 +419,25 @@ func easypanelServices(inv *discovery.Inventory, app *discovery.App) [][2]string
 	for _, m := range app.Members {
 		if a := inv.Find(m); a != nil && a.ID != app.ID {
 			out = append(out, easypanelServices(inv, a)...)
+		}
+	}
+	return out
+}
+
+// easypanelFolders lists the (project, service) folders below
+// <dir>/projects, also of services that are not running.
+func easypanelFolders(dir string) [][2]string {
+	var out [][2]string
+	projects, _ := os.ReadDir(filepath.Join(dir, "projects"))
+	for _, pr := range projects {
+		if !pr.IsDir() {
+			continue
+		}
+		svcs, _ := os.ReadDir(filepath.Join(dir, "projects", pr.Name()))
+		for _, sv := range svcs {
+			if sv.IsDir() {
+				out = append(out, [2]string{pr.Name(), sv.Name()})
+			}
 		}
 	}
 	return out

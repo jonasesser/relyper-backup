@@ -92,3 +92,32 @@ func TestDetails(t *testing.T) {
 		t.Error("unsupportedEngine")
 	}
 }
+
+func TestMarkSourceMounts(t *testing.T) {
+	apps := map[string]*App{
+		"container:tool": {ID: "container:tool", Services: []Service{{Name: "tool", Data: []Data{
+			{Type: "bind", HostPath: "/srv/all", ReadOnly: true, Class: ClassPersistent},
+			{Type: "bind", HostPath: "/etc/easypanel", ReadOnly: true, Class: ClassConfiguration},
+			{Type: "bind", HostPath: "/srv/own", ReadOnly: true, Class: ClassPersistent},
+			{Type: "bind", HostPath: "/srv/rw", Class: ClassPersistent},
+		}}}},
+		"compose:web": {ID: "compose:web", Services: []Service{{Name: "web", Data: []Data{
+			{Type: "bind", HostPath: "/srv/all/web", Class: ClassPersistent},
+			{Type: "bind", HostPath: "/srv/rw/x", Class: ClassPersistent},
+		}}}},
+	}
+	markSourceMounts(apps)
+	got := []string{}
+	for _, d := range apps["container:tool"].Services[0].Data {
+		got = append(got, d.Class)
+	}
+	want := []string{ClassSource, ClassSource, ClassPersistent, ClassPersistent}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("classes %v, want %v", got, want)
+		}
+	}
+	if apps["compose:web"].Services[0].Data[0].Class != ClassPersistent {
+		t.Fatal("data of the app itself must stay")
+	}
+}

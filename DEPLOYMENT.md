@@ -289,13 +289,28 @@ MCP), pick an app, choose a repository and create its backup plan. The plan:
   database inside its own container with the engine's tool, so the database
   password never leaves that container; a failed dump fails the backup;
 - backs up the dump directory, the compose directory (compose files, `.env`,
-  other files), for Easypanel apps Easypanel's settings (everything in
-  `/etc/easypanel` except `projects/`: domains, Traefik, certificates), and
-  the app's volumes and bind mounts, without the live database files. The
+  other files), for Easypanel apps the service folder
+  (`/etc/easypanel/projects/<project>/<service>`), and the app's volumes and
+  bind mounts, without the live database files. The
   preview lists every item with a checkbox; cache and temporary mounts are
   off by default, the Docker socket is never included;
 - runs daily at 02:30 and keeps 7 daily, 4 weekly and 6 monthly snapshots
   (change it on the plan page).
+
+Easypanel's own settings (everything in `/etc/easypanel` except
+`projects/`: environment variables, domains, ports, Traefik routes,
+certificates) are shared by all services, so they are only in the plan of
+the app "Easypanel" (`system:easypanel`, plan `app-system-easypanel`). To
+start small, choose "Easypanel configuration only (no app data)" in "Set up
+backups": one plan with these settings and the folder of every Easypanel
+service (code and files) without `volumes/`, no app volumes and no
+databases. The preview shows the measured size of every path. Add the app
+plans later.
+
+Read-only binds that contain the data of other apps (such as
+`/var/lib/docker/volumes` and `/etc/easypanel` of Relyper Backup itself)
+are source mounts: they are never part of a plan of the app that mounts
+them, also when Relyper Backup cannot recognize its own container.
 
 Restore tests run weekly (`RELYPER_VERIFY_INTERVAL_DAYS`) and on demand. A
 database restore test starts a container from the database's own image

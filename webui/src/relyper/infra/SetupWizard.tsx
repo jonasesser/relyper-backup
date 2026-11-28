@@ -163,7 +163,7 @@ export const SetupWizard = ({
 
       <Stack gap={2}>
         <Text fontWeight="medium">1. What should be backed up?</Text>
-        <NativeSelect.Root size="sm" width={{ base: "100%", md: "320px" }}>
+        <NativeSelect.Root size="sm" width={{ base: "100%", md: "380px" }}>
           <NativeSelect.Field
             value={scope}
             onChange={(e) => setScope(e.target.value)}
@@ -171,12 +171,25 @@ export const SetupWizard = ({
           >
             <option value="all">Entire Docker environment</option>
             {easypanel && (
+              <option value="easypanel_config">
+                Easypanel configuration only (no app data)
+              </option>
+            )}
+            {easypanel && (
               <option value="easypanel">Entire Easypanel environment</option>
             )}
             <option value="apps">Selected projects and apps</option>
           </NativeSelect.Field>
           <NativeSelect.Indicator />
         </NativeSelect.Root>
+        {scope === "easypanel_config" && (
+          <Text color="fg.muted" data-testid="setup-scope-help">
+            One small plan for Easypanel itself: its settings (environment
+            variables, domains, ports, Traefik routes, certificates) and the
+            code and files of every service, without the volumes and databases
+            of the apps. Add the app plans later.
+          </Text>
+        )}
         {scope === "apps" && (
           <Flex gap={3} wrap="wrap">
             {apps.map((a) => (
@@ -260,6 +273,35 @@ export const SetupWizard = ({
                     {s}
                   </Text>
                 ))}
+                {(a.plan?.notes || []).map((s) => (
+                  <Text key={s} color="fg.muted">
+                    {s}
+                  </Text>
+                ))}
+                {a.items && a.items.length > 0 && (
+                  <details>
+                    <summary style={{ cursor: "pointer" }}>
+                      What is in it ({a.items.length})
+                    </summary>
+                    <Stack
+                      gap={0.5}
+                      mt={1}
+                      data-testid={`setup-items-${a.name}`}
+                    >
+                      {a.items.map((it) => (
+                        <Flex key={it.path} gap={2} justify="space-between">
+                          <Text minW={0} title={it.path}>
+                            {it.label}
+                          </Text>
+                          <Text color="fg.muted" flexShrink={0}>
+                            {it.complete ? "" : "≥ "}
+                            {formatBytes(it.bytes)}
+                          </Text>
+                        </Flex>
+                      ))}
+                    </Stack>
+                  </details>
+                )}
               </Box>
             ))}
           </Stack>

@@ -112,4 +112,61 @@ describe("SetupWizard", () => {
       expect(screen.queryByTestId("setup-proposals")).toBeNull(),
     );
   });
+
+  it("offers an Easypanel-only plan and lists what is in it", async () => {
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(
+        json(
+          url.endsWith("setup/propose")
+            ? {
+                ...proposals,
+                apps: [
+                  {
+                    app: "system:easypanel",
+                    name: "Easypanel",
+                    kind: "system",
+                    existing_plan: false,
+                    has_databases: false,
+                    plan: {
+                      app: "system:easypanel",
+                      plan_id: "app-system-easypanel",
+                      paths: ["/etc/easypanel/traefik"],
+                    },
+                    size: { bytes: 5 * 1024 ** 2, files: 40, complete: true },
+                    items: [
+                      {
+                        path: "/etc/easypanel/traefik",
+                        label: "Easypanel: Traefik routes and TLS certificates",
+                        bytes: 4 * 1024 ** 2,
+                        files: 30,
+                        complete: true,
+                      },
+                    ],
+                  },
+                ],
+              }
+            : {},
+        ),
+      ),
+    );
+    renderWithProviders(
+      <SetupWizard apps={[]} easypanel={true} onDone={() => {}} />,
+    );
+    fireEvent.change(screen.getByTestId("setup-scope"), {
+      target: { value: "easypanel_config" },
+    });
+    expect(screen.getByTestId("setup-scope-help")).toHaveTextContent(
+      "without the volumes and databases",
+    );
+    fireEvent.click(screen.getByTestId("setup-preview"));
+    expect(
+      await screen.findByTestId("setup-items-Easypanel"),
+    ).toHaveTextContent("Traefik routes");
+    const call = fetchMock.mock.calls.find((c) =>
+      String(c[0]).endsWith("setup/propose"),
+    )!;
+    expect(JSON.parse(String(call[1]!.body))).toMatchObject({
+      scope: "easypanel_config",
+    });
+  });
 });

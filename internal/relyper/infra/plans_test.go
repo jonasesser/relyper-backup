@@ -38,7 +38,7 @@ func TestProposeAppPlanItems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{code, filepath.Join(ep, "traefik"), "/v/uploads", s.InventoryDir()}
+	want := []string{code, "/v/uploads", s.InventoryDir()}
 	if !slices.Equal(p.Paths, want) {
 		t.Fatalf("paths %v, want %v (items %+v)", p.Paths, want, p.Items)
 	}
@@ -83,15 +83,53 @@ func TestProposeEasypanelServicePlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{filepath.Join(ep, "projects/hosting/budget"), filepath.Join(ep, "traefik"), filepath.Join(ep, "data"), "/v/data"} {
-		if !slices.Contains(p.Paths, want) {
-			t.Errorf("missing %s in %v", want, p.Paths)
-		}
+	// The app plan has its own service folder and data; the shared
+	// Easypanel settings are only in the plan of Easypanel itself.
+	want := []string{filepath.Join(ep, "projects/hosting/budget"), "/v/data", s.InventoryDir()}
+	if !slices.Equal(p.Paths, want) {
+		t.Errorf("paths %v, want %v", p.Paths, want)
+	}
+	if len(p.Notes) == 0 || !strings.Contains(p.Notes[0], "app-system-easypanel") {
+		t.Errorf("notes %v", p.Notes)
 	}
 	// Without /etc/easypanel the preview says what is missing.
 	s.inv.Docker.EasypanelConfig[0].BackupPath = ""
 	p, err = s.ProposeAppPlan(context.Background(), app.ID)
 	if err != nil || len(p.Skipped) == 0 || !strings.Contains(p.Skipped[0], "environment variables, domains") {
 		t.Fatalf("skipped %v %v", p.Skipped, err)
+	}
+}
+
+func TestProposeEasypanelSystemPlan(t *testing.T) {
+	root := t.TempDir()
+	ep := filepath.Join(root, "easypanel")
+	for _, d := range []string{"projects/hosting/budget/code", "projects/hosting/budget/volumes/data", "projects/web/db", "traefik", "data"} {
+		if err := os.MkdirAll(filepath.Join(ep, d), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := &Service{s: Settings{DumpDir: filepath.Join(root, "dumps"), DumpCommand: "relyper-dbdump"}}
+	s.inv = &discovery.Inventory{Docker: discovery.Host{Available: true, Easypanel: true,
+		EasypanelConfig: []discovery.DeploymentFile{{HostPath: "/etc/easypanel", BackupPath: ep}}},
+		Apps: []discovery.App{{ID: discovery.EasypanelSystemID, Name: "Easypanel", Kind: discovery.KindSystem,
+			Services: []discovery.Service{{Name: "easypanel", State: "running"}}}}}
+	s.invAt = time.Now()
+	p, err := s.ProposeAppPlan(context.Background(), discovery.EasypanelSystemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{filepath.Join(ep, "data"), filepath.Join(ep, "traefik"), filepath.Join(ep, "projects/hosting/budget"), filepath.Join(ep, "projects/web/db"), s.InventoryDir()}
+	if !slices.Equal(p.Paths, want) {
+		t.Fatalf("paths %v, want %v", p.Paths, want)
+	}
+	// App data in volumes/ stays out.
+	if !slices.Equal(p.Excludes, []string{filepath.Join(ep, "projects/hosting/budget/volumes")}) {
+		t.Fatalf("excludes %v", p.Excludes)
+	}
+
+	// The Easypanel-only scope selects just this app.
+	apps, err := s.selectApps(s.inv, SetupRequest{Scope: ScopeEasypanelConfig})
+	if err != nil || len(apps) != 1 || apps[0].ID != discovery.EasypanelSystemID {
+		t.Fatalf("scope: %v %v", apps, err)
 	}
 }
