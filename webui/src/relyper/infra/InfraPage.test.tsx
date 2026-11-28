@@ -175,7 +175,7 @@ describe("InfraPage", () => {
     renderWithProviders(<InfraPage />);
     await screen.findByTestId("app-compose:shop");
     fireEvent.change(screen.getByTestId("filter-protection"), {
-      target: { value: "fully_protected" },
+      target: { value: "group:protected" },
     });
     expect(screen.queryByTestId("app-compose:shop")).toBeNull();
     expect(screen.getByTestId("app-easypanel:blog")).toBeInTheDocument();
@@ -183,5 +183,34 @@ describe("InfraPage", () => {
       target: { value: "postgres" },
     });
     expect(screen.getByText("No app matches the filter.")).toBeInTheDocument();
+  });
+
+  it("summary badges filter by the same groups as the status filter", async () => {
+    const blog = {
+      ...shop,
+      app: "easypanel:blog",
+      name: "blog",
+      kind: "easypanel",
+      protection: "backup_overdue",
+      actions: [],
+    };
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(json(coverage([shop, blog]))),
+    );
+    renderWithProviders(<InfraPage />);
+    await screen.findByTestId("app-compose:shop");
+    const attention = screen.getByTestId("summary-attention");
+    expect(attention).toHaveTextContent("1 need attention");
+    fireEvent.click(attention);
+    expect(screen.queryByTestId("app-compose:shop")).toBeNull();
+    expect(screen.getByTestId("app-easypanel:blog")).toBeInTheDocument();
+    expect(screen.getByTestId("filter-protection")).toHaveValue(
+      "group:attention",
+    );
+    fireEvent.click(screen.getByTestId("summary-attention"));
+    expect(screen.getByTestId("app-compose:shop")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("summary-unprotected"));
+    expect(screen.getByTestId("app-compose:shop")).toBeInTheDocument();
+    expect(screen.queryByTestId("app-easypanel:blog")).toBeNull();
   });
 });

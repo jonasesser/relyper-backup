@@ -43,6 +43,7 @@ export const stateColor: Record<string, string> = {
   ready: "green",
   ok: "green",
   remote: "gray",
+  stopped: "gray",
   no_data: "gray",
   not_needed: "gray",
   unsupported: "orange",
@@ -74,19 +75,54 @@ const stateLabel: Record<string, string> = {
   not_ready: "not ready",
   no_data: "no data",
   not_needed: "not needed",
+  remote: "other node",
 };
 
-// Overall statuses in the order used for filters and the summary.
-export const protections = [
-  "fully_protected",
-  "restore_not_verified",
-  "partially_protected",
-  "backup_overdue",
-  "unsupported_configuration",
-  "backup_failed",
-  "not_protected",
-  "no_data",
+// Status groups shown as summary badges. Each badge filters the app list
+// by its group, and the status filter offers the same groups, so the
+// numbers on the badges and in the filter always match.
+export const protectionGroups: {
+  id: string;
+  label: string;
+  color: string;
+  statuses: string[];
+}[] = [
+  {
+    id: "protected",
+    label: "fully protected",
+    color: "green",
+    statuses: ["fully_protected"],
+  },
+  {
+    id: "attention",
+    label: "need attention",
+    color: "orange",
+    statuses: [
+      "restore_not_verified",
+      "partially_protected",
+      "backup_overdue",
+      "unsupported_configuration",
+    ],
+  },
+  {
+    id: "unprotected",
+    label: "unprotected or failed",
+    color: "red",
+    statuses: ["not_protected", "backup_failed"],
+  },
+  { id: "nodata", label: "no data", color: "gray", statuses: ["no_data"] },
 ];
+
+// matchesStatus applies a status filter value: "" (all), "group:<id>" or a
+// single status.
+export const matchesStatus = (filter: string, protection: string) => {
+  if (!filter) return true;
+  if (filter.startsWith("group:")) {
+    const g = protectionGroups.find((g) => "group:" + g.id === filter);
+    return !!g && g.statuses.includes(protection);
+  }
+  return protection === filter;
+};
 
 const humanMB = (b?: number) =>
   b ? `${Math.round(b / (1 << 20)).toLocaleString()} MB` : "";
@@ -775,7 +811,7 @@ export const InfraPage = () => {
   const shown = apps.filter(
     (a) =>
       (!filter.kind || a.kind === filter.kind) &&
-      (!filter.protection || a.protection === filter.protection) &&
+      matchesStatus(filter.protection, a.protection) &&
       (!filter.db || (a.databases || []).includes(filter.db)) &&
       (!filter.text ||
         (a.app + " " + a.name)
@@ -783,7 +819,7 @@ export const InfraPage = () => {
           .includes(filter.text.toLowerCase())),
   );
   const select = (
-    key: "kind" | "protection" | "db",
+    key: "kind" | "db",
     label: string,
     options: [string, string][],
   ) => (
@@ -885,21 +921,35 @@ export const InfraPage = () => {
               </Badge>
             )
           )}
-          <Badge colorPalette="green">
-            {counts(["fully_protected"])} fully protected
-          </Badge>
-          <Badge colorPalette="orange">
-            {counts([
-              "restore_not_verified",
-              "partially_protected",
-              "backup_overdue",
-              "unsupported_configuration",
-            ])}{" "}
-            need attention
-          </Badge>
-          <Badge colorPalette="red">
-            {counts(["not_protected", "backup_failed"])} unprotected or failed
-          </Badge>
+          {protectionGroups.map((g) => {
+            const n = counts(g.statuses);
+            if (g.id === "nodata" && n === 0) return null;
+            const value = "group:" + g.id;
+            const active = filter.protection === value;
+            return (
+              <Badge
+                key={g.id}
+                as="button"
+                colorPalette={g.color}
+                variant={active ? "solid" : "subtle"}
+                cursor="pointer"
+                aria-pressed={active}
+                title={
+                  (active ? "Show all apps. " : "Show only these apps: ") +
+                  g.statuses
+                    .map((st) => stateLabel[st] || st.replace(/_/g, " "))
+                    .join(", ")
+                }
+                data-testid={`summary-${g.id}`}
+                onClick={() => {
+                  setFilter({ ...filter, protection: active ? "" : value });
+                  setTab("apps");
+                }}
+              >
+                {n} {g.label}
+              </Badge>
+            );
+          })}
         </Flex>
       )}
       <TabsRoot value={tab} onValueChange={(e: any) => setTab(e.value)}>
@@ -925,15 +975,43 @@ export const InfraPage = () => {
                     setFilter({ ...filter, text: e.target.value })
                   }
                 />
-                {select("protection", "Status", [
-                  ...protections.map(
-                    (p) =>
-                      [p, stateLabel[p] || p.replace(/_/g, " ")] as [
-                        string,
-                        string,
-                      ],
-                  ),
-                ])}
+                <NativeSelect.Root
+                  size="sm"
+                  width={{ base: "100%", md: "auto" }}
+                >
+                  <NativeSelect.Field
+                    aria-label="Status"
+                    data-testid="filter-protection"
+                    value={filter.protection}
+                    onChange={(e) =>
+                      setFilter({ ...filter, protection: e.target.value })
+                    }
+                  >
+                    <option value="">Status: all ({apps.length})</option>
+                    {protectionGroups.map((g) => (
+                      <optgroup
+                        key={g.id}
+                        label={`${g.label} (${counts(g.statuses)})`}
+                      >
+                        {g.statuses.length > 1 && (
+                          <option value={"group:" + g.id}>
+                            all {g.label} ({counts(g.statuses)})
+                          </option>
+                        )}
+                        {g.statuses.map((st) => (
+                          <option
+                            key={st}
+                            value={g.statuses.length > 1 ? st : "group:" + g.id}
+                          >
+                            {stateLabel[st] || st.replace(/_/g, " ")} (
+                            {counts([st])})
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </NativeSelect.Field>
+                  <NativeSelect.Indicator />
+                </NativeSelect.Root>
                 {select("kind", "Type", [
                   ["compose", "Compose"],
                   ["swarm_stack", "Swarm stack"],
