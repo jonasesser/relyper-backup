@@ -30,29 +30,47 @@ func LockWait() time.Duration {
 // means a second Relyper Backup uses the same data directory, typically the
 // old container during a rolling ("zero downtime") deploy.
 //
-// While it waits, a temporary server on bindAddr answers the health check
-// (and every other request with 503 "starting"). Swarm and Easypanel then
-// see the new container as healthy and stop the old one, which releases the
-// lock; without this a start-first deploy would wait forever.
+// While it waits, it asks the old instance for a handover (see handover.go)
+// and a temporary server on bindAddr answers the health check: 503 until the
+// old instance is idle, then 200, so the deployment stops the old instance.
+// Every other request gets 503 "starting".
 func WaitForOplogLock(store *sqlitestore.SqliteStore, err error, open func() (*sqlitestore.SqliteStore, error), dataDir, bindAddr string) (*sqlitestore.SqliteStore, error) {
-	if errors.Is(err, sqlitestore.ErrLocked) && LockWait() > 0 && bindAddr != "" {
-		stop := serveStarting(bindAddr)
+	if !errors.Is(err, sqlitestore.ErrLocked) || LockWait() <= 0 {
+		return store, err
+	}
+	if rerr := requestHandover(dataDir); rerr != nil {
+		zap.S().Warnw("handover: cannot write the request", "error", rerr)
+	}
+	w := &waiter{dataDir: dataDir, start: time.Now(), max: HandoverMaxWait()}
+	if bindAddr != "" {
+		stop := serveStarting(bindAddr, w.ready)
 		defer stop()
 	}
-	return waitFor(store, err, open, dataDir, LockWait(), 2*time.Second)
+	store, err = waitFor(store, err, open, dataDir, LockWait(), 2*time.Second)
+	if err == nil {
+		ClearHandover(dataDir)
+	}
+	return store, err
 }
 
-func serveStarting(addr string) func() {
+func serveStarting(addr string, healthy func() bool) func() {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		zap.S().Warnw("cannot answer health checks while waiting for the lock", "error", err)
 		return func() {}
 	}
 	mux := http.NewServeMux()
-	mux.Handle(health.Path, health.Handler())
+	mux.HandleFunc(health.Path, func(w http.ResponseWriter, r *http.Request) {
+		if healthy() {
+			health.Handler().ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Retry-After", "5")
+		http.Error(w, `{"status":"waiting for the previous instance"}`, http.StatusServiceUnavailable)
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After", "5")
-		http.Error(w, "Relyper Backup is starting: waiting for the previous instance to stop.", http.StatusServiceUnavailable)
+		http.Error(w, "Relyper Backup is starting: waiting for the previous instance to hand over.", http.StatusServiceUnavailable)
 	})
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
@@ -71,9 +89,8 @@ func waitFor[T any](v T, err error, open func() (T, error), dataDir string, wait
 	lastLog := time.Time{}
 	for errors.Is(err, sqlitestore.ErrLocked) && time.Now().Before(deadline) {
 		if time.Since(lastLog) >= 15*time.Second {
-			zap.S().Warnw("another Relyper Backup process uses this data directory; waiting for it to stop. "+
-				"Only one instance may use a data directory at a time. On Easypanel turn off \"Zero Downtime\" in the service's deploy settings; "+
-				"elsewhere check that no second container mounts the same /data.",
+			zap.S().Warnw("another Relyper Backup process uses this data directory; asked it to hand over. "+
+				"This is normal during a zero-downtime deploy. If it does not end, check that no second container or replica mounts the same /data.",
 				"data_dir", dataDir, "gives_up_in", time.Until(deadline).Round(time.Second).String())
 			lastLog = time.Now()
 		}

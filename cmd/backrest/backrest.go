@@ -95,6 +95,9 @@ func runApp() {
 		zap.L().Fatal("error creating oplog", zap.Error(err))
 	}
 	defer opLogStore.Close()
+	// relyper: hand the data directory over to a new instance during a
+	// zero-downtime deploy once no operation is running.
+	go relyperstartup.WatchHandover(ctx, env.DataDir(), relyperstartup.OpLogBusy(opLog))
 
 	// onOpLogReady lets the system tray (when built with -tags tray) observe
 	// operation status in-process to reflect backup state in its icon. It is

@@ -148,14 +148,24 @@ On Easypanel:
 4. Deploy and press Refresh on the Infrastructure page. While Docker is not
    reachable the page shows these steps too.
 
-**Only one instance per data directory.** Turn off **Zero Downtime** in the
-service's deploy settings and keep one replica. With zero downtime Easypanel
-starts the new container while the old one still uses `/data`; Relyper
-Backup then waits for the old one (up to `RELYPER_LOCK_WAIT_SECONDS`,
-default 300) and answers the health check meanwhile, so the deploy still
-finishes, but with the option off there is no waiting at all. The log line
-"another Relyper Backup process uses this data directory" means exactly
-this.
+**Zero Downtime works.** Only one process may use the data directory, so
+during a zero-downtime deploy the two containers hand over:
+
+1. The new container finds `/data` in use, asks the old one for a handover
+   (file `relyper-handover.request` in `/data`) and answers its health check
+   with 503 while it waits.
+2. The old container lets running backups, restores, prunes and checks
+   finish (at most `RELYPER_HANDOVER_MAX_SECONDS`, default 100) and confirms.
+3. The new container reports healthy, Easypanel stops the old one, the new
+   one takes over the data directory and starts.
+
+The UI is unavailable for the few seconds between the old container
+stopping and the new one starting. If an operation runs longer than the
+maximum wait, it is interrupted; restic handles that safely (no snapshot,
+the next run redoes it). Keep **one replica**; two replicas on one `/data`
+cannot work. An old image without handover support is stopped after the
+maximum wait. `RELYPER_LOCK_WAIT_SECONDS` (default 300) is how long the new
+container waits for the old one to stop before it gives up and restarts.
 
 Easypanel runs services as Swarm services named `<project>_<service>` and
 keeps bind-mounted data under `/etc/easypanel/projects/<project>/<service>/`;
