@@ -16,29 +16,38 @@ const Tile = ({
   value,
   tone,
   testid,
+  to,
 }: {
   label: string;
   value: React.ReactNode;
   tone?: string;
   testid?: string;
-}) => (
-  <Box
-    borderWidth="1px"
-    borderRadius="md"
-    px={3}
-    py={2}
-    minW="140px"
-    flex="1 1 140px"
-    data-testid={testid}
-  >
-    <Text fontSize="xs" color="fg.muted">
-      {label}
-    </Text>
-    <Text fontSize="xl" fontWeight="semibold" color={tone}>
-      {value}
-    </Text>
-  </Box>
-);
+  to?: string;
+}) => {
+  const tile = (
+    <Box
+      borderWidth="1px"
+      borderRadius="md"
+      px={3}
+      py={2}
+      h="100%"
+      _hover={to ? { bg: "bg.muted" } : undefined}
+      data-testid={testid}
+    >
+      <Text fontSize="xs" color="fg.muted">
+        {label}
+      </Text>
+      <Text fontSize="xl" fontWeight="semibold" color={tone}>
+        {value}
+      </Text>
+    </Box>
+  );
+  return (
+    <Box minW="140px" flex="1 1 140px">
+      {to ? <Link to={to}>{tile}</Link> : tile}
+    </Box>
+  );
+};
 
 export const HealthOverview = () => {
   const [o, setO] = useState<Overview | null>(null);
@@ -97,9 +106,24 @@ export const HealthOverview = () => {
           data-testid="health-attention"
         >
           <Text fontWeight="medium">Needs attention</Text>
-          {o.attention!.map((a) => (
-            <Text key={a}>• {a}</Text>
-          ))}
+          {o.attention!.map((a) => {
+            // App lines lead to the Infrastructure page, filtered.
+            const to = /^\d+ apps? /.test(a)
+              ? "/infra?status=group:unprotected"
+              : undefined;
+            return (
+              <Text key={a}>
+                •{" "}
+                {to ? (
+                  <Link to={to} style={{ textDecoration: "underline" }}>
+                    {a}
+                  </Link>
+                ) : (
+                  a
+                )}
+              </Text>
+            );
+          })}
         </Box>
       )}
       <Flex gap={2} wrap="wrap">
@@ -110,17 +134,20 @@ export const HealthOverview = () => {
               label="Apps fully protected"
               value={`${o.apps["fully_protected"] || 0} / ${o.apps_total}`}
               tone="green.600"
+              to="/infra?status=group:protected"
             />
             <Tile
               label="Apps needing attention"
               value={attention}
               tone={attention ? "orange.500" : undefined}
+              to="/infra?status=group:attention"
             />
             <Tile
               testid="tile-unprotected"
               label="Apps unprotected or failed"
               value={bad}
               tone={bad ? "red.500" : undefined}
+              to="/infra?status=group:unprotected"
             />
           </>
         )}

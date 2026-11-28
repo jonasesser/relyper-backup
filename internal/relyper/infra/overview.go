@@ -7,11 +7,12 @@ package infra
 import (
 	"context"
 	"errors"
-	"strings"
+	"fmt"
 	"time"
 
 	v1 "github.com/garethgeorge/backrest/gen/go/v1"
 	"github.com/garethgeorge/backrest/internal/oplog"
+	"github.com/garethgeorge/backrest/internal/relyper/discovery"
 )
 
 // OpSummary is a short view of an operation.
@@ -69,11 +70,25 @@ func (s *Service) Overview(ctx context.Context) (*Overview, error) {
 	if rd.Coverage != nil {
 		o.DockerAvailable = rd.Coverage.Docker.Available
 		for _, a := range rd.Coverage.Apps {
+			if a.Kind == discovery.KindGroup {
+				continue // tag groups repeat their members
+			}
 			o.Apps[a.Protection]++
 			o.AppsTotal++
-			if a.Protection == ProtFailed || a.Protection == ProtNone {
-				o.Attention = append(o.Attention, a.Name+": "+strings.ReplaceAll(a.Protection, "_", " "))
+		}
+		// One line per problem kind; the apps are listed on the
+		// Infrastructure page.
+		plural := func(n int, what string) string {
+			if n == 1 {
+				return "1 app " + what
 			}
+			return fmt.Sprintf("%d apps %s", n, what)
+		}
+		if n := o.Apps[ProtFailed]; n > 0 {
+			o.Attention = append(o.Attention, plural(n, "with a failed backup"))
+		}
+		if n := o.Apps[ProtNone]; n > 0 {
+			o.Attention = append(o.Attention, plural(n, "not protected"))
 		}
 	}
 	if s.d.OpLog != nil {

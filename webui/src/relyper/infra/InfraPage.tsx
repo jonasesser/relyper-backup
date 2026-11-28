@@ -35,6 +35,7 @@ import {
   ServiceInfo,
   infraApi,
 } from "./infraApi";
+import { useLocation } from "react-router";
 import { SetupWizard } from "./SetupWizard";
 import { RecoveryPanel } from "./RecoveryPanel";
 import { AddRepoLink } from "./AddRepoLink";
@@ -1129,10 +1130,12 @@ export const EasypanelDockerSteps = () => (
 export const InfraPage = () => {
   const [cov, setCov] = useState<CoverageReport | null>(null);
   const [services, setServices] = useState<Record<string, ServiceInfo[]>>({});
+  // ?status=group:unprotected (from the dashboard) preselects the filter.
+  const location = useLocation();
   const [filter, setFilter] = useState({
     text: "",
     kind: "",
-    protection: "",
+    protection: new URLSearchParams(location.search).get("status") || "",
     db: "",
     tag: "",
   });

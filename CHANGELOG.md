@@ -8,6 +8,8 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 
 ### Added
 
+- Dashboard "Needs attention" shows counts instead of every app; counts
+  and tiles open the Infrastructure page with that status filter. (#61)
 - Every app card lists its configuration as backup items: the app
   definition in the recovery report, for Easypanel services the service
   folder (`code/`) and Easypanel's settings (environment variables, domains,

@@ -502,4 +502,23 @@ describe("InfraPage", () => {
       shopCard.querySelector("[data-testid=db-summary]"),
     ).toHaveTextContent("postgres in service db");
   });
+
+  it("takes the status filter from the link", async () => {
+    const blog = {
+      ...shop,
+      app: "compose:blog",
+      name: "blog",
+      protection: "fully_protected",
+      actions: [],
+    };
+    fetchMock.mockResolvedValue(json(coverage([shop, blog])));
+    renderWithProviders(<InfraPage />, {
+      route: "/?status=group:unprotected",
+    });
+    await screen.findByTestId("app-compose:shop");
+    expect(screen.queryByTestId("app-compose:blog")).toBeNull();
+    expect(screen.getByTestId("filter-protection")).toHaveValue(
+      "group:unprotected",
+    );
+  });
 });

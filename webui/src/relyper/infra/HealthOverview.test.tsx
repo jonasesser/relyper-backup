@@ -45,7 +45,7 @@ const overview: Overview = {
       },
     },
   ],
-  attention: ["shop: backup_failed", "storage of hosteurope is almost full"],
+  attention: ["1 app not protected", "storage of hosteurope is almost full"],
   backups_24h: { success: 3, error: 1 },
 };
 
@@ -74,5 +74,16 @@ describe("HealthOverview", () => {
     );
     expect(screen.getByText(/repository locked/)).toBeInTheDocument();
     expect(screen.getByText("almost full")).toBeInTheDocument();
+  });
+
+  it("links the app counts to the filtered Infrastructure page", async () => {
+    renderWithProviders(<HealthOverview />);
+    const link = await screen.findByRole("link", {
+      name: "1 app not protected",
+    });
+    expect(link.getAttribute("href")).toBe("/infra?status=group:unprotected");
+    expect(
+      screen.getByTestId("tile-unprotected").closest("a")?.getAttribute("href"),
+    ).toBe("/infra?status=group:unprotected");
   });
 });
