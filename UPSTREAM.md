@@ -62,7 +62,7 @@ Keep this list current; it is the merge checklist.
 | `webui/index.html` | title and favicon | #14 |
 | `webui/src/app/main.tsx` | renders the customer portal instead of the operator app for `#/portal` | #33 |
 | `internal/auth/auth.go`, `internal/auth/middleware.go` | `SetExternalVerifier`: bearer tokens of Relyper Identity sessions are checked before the upstream JWT | #18 |
-| `webui/src/features/auth/LoginModal.tsx` | renders `RelyperLogin` (sign-in with Relyper Identity) above the password fields | #18 |
+| `webui/src/features/auth/LoginModal.tsx` | renders `RelyperLogin` (sign-in with Relyper Identity) above the password fields; hides the password fields behind an emergency-access link while Relyper Identity is enabled | #18, #39 |
 | `webui/package.json` | `start`, `build`, `build-windows`, `compile-i18n` run `relyper/brand-messages.mjs` first; `pnpm.overrides` for `sha.js` and `rollup` (security fixes of build tools) | #14, #38 |
 | `internal/resticinstaller/resticinstaller.go` | `RequiredResticVersion` 0.20.0 | #38 |
 | `internal/resticinstaller/verify.go` | `github.com/ProtonMail/go-crypto/openpgp` instead of the deprecated `golang.org/x/crypto/openpgp` (one argument added) | #38 |

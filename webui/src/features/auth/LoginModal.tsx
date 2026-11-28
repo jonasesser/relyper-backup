@@ -17,6 +17,11 @@ export const LoginModal = () => {
   const [username, setUsername] = useState(defaultCreds.username);
   const [password, setPassword] = useState(defaultCreds.password);
   const [loading, setLoading] = useState(false);
+  // relyper: with Relyper Identity active, local users are emergency access
+  // and their fields stay hidden until requested.
+  const [oidc, setOidc] = useState(false);
+  const [breakglass, setBreakglass] = useState(false);
+  const hideLocal = oidc && !breakglass;
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -65,57 +70,65 @@ export const LoginModal = () => {
       title={m.login_title()}
       size="2xl"
       footer={
-        <Button
-          type="submit"
-          loading={loading}
-          onClick={() => handleSubmit()}
-          width="full"
-          data-testid="login-submit"
-        >
-          {m.login_button()}
-        </Button>
+        hideLocal ? undefined : (
+          <Button
+            type="submit"
+            loading={loading}
+            onClick={() => handleSubmit()}
+            width="full"
+            data-testid="login-submit"
+          >
+            {m.login_button()}
+          </Button>
+        )
       }
     >
       {/* relyper: sign-in through Relyper Identity (OIDC) */}
-      <RelyperLogin />
-      <form onSubmit={handleSubmit}>
-        <Stack direction="row" gap={4}>
-          <Field
-            flex={1}
-            label={m.login_username_placeholder()}
-            required
-            errorText={!username ? m.login_username_required() : undefined}
-          >
-            <InputGroup width="100%" startElement={<LuUser />}>
-              <Input
-                data-testid="login-username"
-                placeholder={m.login_username_placeholder()}
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-              />
-            </InputGroup>
-          </Field>
+      <RelyperLogin
+        onEnabled={setOidc}
+        breakglass={breakglass}
+        onBreakglass={() => setBreakglass(true)}
+      />
+      {!hideLocal && (
+        <form onSubmit={handleSubmit}>
+          <Stack direction="row" gap={4}>
+            <Field
+              flex={1}
+              label={m.login_username_placeholder()}
+              required
+              errorText={!username ? m.login_username_required() : undefined}
+            >
+              <InputGroup width="100%" startElement={<LuUser />}>
+                <Input
+                  data-testid="login-username"
+                  placeholder={m.login_username_placeholder()}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                />
+              </InputGroup>
+            </Field>
 
-          <Field
-            flex={1}
-            label={m.login_password_placeholder()}
-            required
-            errorText={!password ? m.login_password_required() : undefined}
-          >
-            <InputGroup width="100%" startElement={<LuLock />}>
-              <Input
-                data-testid="login-password"
-                type="password"
-                placeholder={m.login_password_placeholder()}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </InputGroup>
-          </Field>
-        </Stack>
-        {/* Allows submitting the form by pressing enter in one of the fields */}
-        <button type="submit" style={{ display: "none" }} />
-      </form>
+            <Field
+              flex={1}
+              label={m.login_password_placeholder()}
+              required
+              errorText={!password ? m.login_password_required() : undefined}
+            >
+              <InputGroup width="100%" startElement={<LuLock />}>
+                <Input
+                  data-testid="login-password"
+                  type="password"
+                  placeholder={m.login_password_placeholder()}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </InputGroup>
+            </Field>
+          </Stack>
+          {/* Allows submitting the form by pressing enter in one of the fields */}
+          <button type="submit" style={{ display: "none" }} />
+        </form>
+      )}
     </FormModal>
   );
 };

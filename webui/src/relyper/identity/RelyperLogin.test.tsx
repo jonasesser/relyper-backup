@@ -35,7 +35,9 @@ describe("RelyperLogin", () => {
     expect(await screen.findByTestId("relyper-login-button")).toHaveTextContent(
       "Sign in with Relyper",
     );
-    expect(screen.getByText("or with a local user")).toBeInTheDocument();
+    expect(
+      screen.getByText("Emergency access with a local user"),
+    ).toBeInTheDocument();
   });
 
   it("fetches the token once after the provider redirected back", async () => {

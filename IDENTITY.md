@@ -79,10 +79,16 @@ Web UI:
 The user appears as `relyper:<e-mail>` in the audit log, so the name is never
 confused with a local user.
 
-MCP consent page: next to the local user fields there is **Sign in with
-Relyper and allow**. The chosen permissions are fixed before the redirect;
-the provider only confirms who the user is, and the login role is required.
-If no local user exists, the page offers only the provider.
+MCP consent page: the main button is **Sign in with Relyper and allow**.
+The chosen permissions are fixed before the redirect; the provider only
+confirms who the user is, and the login role is required. If no local user
+exists, the page offers only the provider.
+
+Emergency access stays reachable but out of the way: while Relyper Identity
+is enabled, the web login and the MCP consent page show only the provider
+button. The local name/password fields open behind the small link
+**Emergency access with a local user…** (on the consent page they stay open
+after a failed local attempt).
 
 ## Roles
 

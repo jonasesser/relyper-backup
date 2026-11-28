@@ -4,10 +4,10 @@
 // identity provider must show its own login page. After the callback the
 // server redirects to /?relyper_login=1 and keeps the web UI token for two
 // minutes behind an HttpOnly cookie; this component fetches it once and
-// stores it like a password login. Local users stay available below as
-// emergency access.
+// stores it like a password login. Local users stay available as emergency
+// access behind a discreet link.
 import React, { useEffect, useState } from "react";
-import { Box, Flex, Separator, Stack, Text } from "@chakra-ui/react";
+import { Box, Flex, Link, Separator, Stack, Text } from "@chakra-ui/react";
 import { Button } from "../../components/ui/button";
 import { setAuthToken } from "../../api/client";
 import { backendUrl } from "../../state/buildcfg";
@@ -67,7 +67,19 @@ const clearQuery = () => {
   window.history.replaceState(null, "", url.toString());
 };
 
-export const RelyperLogin = () => {
+// When the provider sign-in is offered, local users are emergency access
+// only: their fields stay hidden until "Emergency access" is opened.
+// onEnabled tells the login dialog whether to hide its local form;
+// breakglass/onBreakglass control the emergency access state.
+export const RelyperLogin = ({
+  onEnabled,
+  breakglass = true,
+  onBreakglass,
+}: {
+  onEnabled?: (enabled: boolean) => void;
+  breakglass?: boolean;
+  onBreakglass?: () => void;
+} = {}) => {
   const [status, setStatus] = useState<IdentityStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -96,7 +108,10 @@ export const RelyperLogin = () => {
           setError("The sign-in failed. Try again.");
         });
     }
-    fetchIdentityStatus().then(setStatus);
+    fetchIdentityStatus().then((st) => {
+      setStatus(st);
+      onEnabled?.(!!st.enabled);
+    });
   }, []);
 
   if (!status?.enabled && !error && !busy) return null;
@@ -122,12 +137,25 @@ export const RelyperLogin = () => {
           {error}
         </Text>
       )}
-      {status?.enabled && (
+      {status?.enabled && !breakglass && (
+        <Text fontSize="xs" color="fg.muted" textAlign="center">
+          <Link
+            as="button"
+            onClick={() => onBreakglass?.()}
+            color="fg.muted"
+            textDecoration="underline"
+            data-testid="relyper-breakglass"
+          >
+            Emergency access with a local user
+          </Link>
+        </Text>
+      )}
+      {status?.enabled && breakglass && (
         <Flex align="center" gap={3}>
           <Separator flex="1" />
           <Box>
             <Text fontSize="xs" color="fg.muted" whiteSpace="nowrap">
-              or with a local user
+              Emergency access with a local user
             </Text>
           </Box>
           <Separator flex="1" />

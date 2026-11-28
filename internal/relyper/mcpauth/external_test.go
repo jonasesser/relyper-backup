@@ -124,3 +124,22 @@ func TestExternalConsentFailure(t *testing.T) {
 		t.Fatalf("no scopes: %d", rec.Code)
 	}
 }
+
+func TestConsentPageHidesLocalLoginBehindEmergencyAccess(t *testing.T) {
+	o, c, _ := newExternalOAuth(t, true)
+	q := url.Values{"client_id": {c.ID}, "redirect_uri": {c.RedirectURIs[0]}, "response_type": {"code"}, "code_challenge": {"x"}, "code_challenge_method": {"S256"}, "state": {"s"}}
+	rec := httptest.NewRecorder()
+	o.authorize(rec, httptest.NewRequest(http.MethodGet, "https://backup.example/oauth/authorize?"+q.Encode(), nil))
+	body := rec.Body.String()
+	details := strings.Index(body, `<details class="breakglass">`)
+	if details < 0 || strings.Index(body, `name="password"`) < details || strings.Index(body, "Sign in with Relyper and allow") > details {
+		t.Fatalf("local login not behind the emergency access section:\n%s", body)
+	}
+	// A failed local sign-in shows the section open again.
+	v := consentForm(o, c, "approve", "status:read")
+	v.Set("username", "admin")
+	v.Set("password", "wrong")
+	if body := post(o, v).Body.String(); !strings.Contains(body, `<details class="breakglass" open>`) {
+		t.Fatal("emergency access not open after a failed local sign-in")
+	}
+}

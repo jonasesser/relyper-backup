@@ -411,6 +411,7 @@ func (o *OAuth) authorize(w http.ResponseWriter, r *http.Request) {
 		o.page(w, http.StatusBadRequest, data)
 		return
 	}
+	data.LocalFailed = true
 	ip := remoteAddr(r)
 	if o.tooManyFailures(ip) {
 		data.Error = "Too many failed sign-ins. Wait a minute and try again."
@@ -630,6 +631,9 @@ type pageData struct {
 	// offered on the page, if any.
 	PasswordLogin bool
 	ExternalName  string
+	// LocalFailed opens the emergency access section after a failed local
+	// sign-in.
+	LocalFailed bool
 }
 
 func (o *OAuth) page(w http.ResponseWriter, code int, d pageData) {
@@ -657,6 +661,7 @@ label{display:block}.scope{display:flex;gap:10px;align-items:flex-start;padding:
 .field{margin:12px 0}.field input{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--fg);font-size:15px}
 .buttons{display:flex;gap:10px;margin-top:16px}button{flex:1;padding:10px;border-radius:8px;border:1px solid var(--border);font-size:15px;cursor:pointer;background:var(--panel);color:var(--fg)}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff}.or{text-align:center;margin-top:16px}
+.breakglass{margin-top:20px;font-size:14px}.breakglass summary{cursor:pointer;text-align:center}
 </style></head><body><main><div class="card">
 <h1>Connect to Relyper Backup</h1>
 {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
@@ -673,9 +678,14 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff}.o
 {{range .Scopes}}<label class="scope"><input type="checkbox" name="scope_choice" value="{{.Name}}"{{if .Checked}} checked{{end}}>
 <span><code>{{.Name}}</code>{{if .Restricted}} <span class="tag">each use needs your approval</span>{{end}}<br><span class="muted">{{.Description}}</span></span></label>{{end}}
 {{if .ExternalName}}<div class="buttons"><button class="primary" type="submit" name="decision" value="approve_external" formnovalidate>Sign in with {{.ExternalName}} and allow</button></div>
-{{if .PasswordLogin}}<p class="muted or">or with a local user</p>{{end}}{{end}}
-{{if .PasswordLogin}}<div class="field"><label>User name<input name="username" autocomplete="username"{{if not .ExternalName}} required{{end}}></label></div>
+<div class="buttons"><button type="submit" name="decision" value="deny" formnovalidate>Deny</button></div>
+{{if .PasswordLogin}}<details class="breakglass"{{if .LocalFailed}} open{{end}}><summary class="muted">Emergency access with a local user</summary>
+<p class="muted">Only for when {{.ExternalName}} is not available.</p>
+<div class="field"><label>User name<input name="username" autocomplete="username"></label></div>
+<div class="field"><label>Password<input name="password" type="password" autocomplete="current-password"></label></div>
+<div class="buttons"><button type="submit" name="decision" value="approve">Allow with local user</button></div></details>{{end}}
+{{else}}{{if .PasswordLogin}}<div class="field"><label>User name<input name="username" autocomplete="username" required></label></div>
 <div class="field"><label>Password<input name="password" type="password" autocomplete="current-password"></label></div>{{end}}
-<div class="buttons"><button type="submit" name="decision" value="deny" formnovalidate>Deny</button>{{if .PasswordLogin}}<button{{if not .ExternalName}} class="primary"{{end}} type="submit" name="decision" value="approve">Allow</button>{{end}}</div>
+<div class="buttons"><button type="submit" name="decision" value="deny" formnovalidate>Deny</button>{{if .PasswordLogin}}<button class="primary" type="submit" name="decision" value="approve">Allow</button>{{end}}</div>{{end}}
 </form>{{end}}{{end}}
 </div></main></body></html>`))
