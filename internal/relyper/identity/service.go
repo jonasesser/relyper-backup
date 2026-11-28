@@ -143,7 +143,12 @@ func loadKey(path string) ([]byte, error) {
 func (s *Service) SetConsentCompleter(f ConsentCompleter) { s.consent = f }
 
 // DisplayName is shown on sign-in buttons.
-func (s *Service) DisplayName() string { return s.cfg.DisplayName }
+func (s *Service) DisplayName() string {
+	if s == nil {
+		return ""
+	}
+	return s.cfg.DisplayName
+}
 
 // Enabled reports whether sign-in through the provider can be offered.
 func (s *Service) Enabled() bool {
@@ -464,4 +469,13 @@ func (s *Service) AdminRole() string {
 		return ""
 	}
 	return s.cfg.AdminRole
+}
+
+// OperatorTenant is the tenant operator users belong to ("" when the
+// tenant check is off). Every operator session comes from this tenant.
+func (s *Service) OperatorTenant() string {
+	if s == nil || s.cfg.OperatorTenant == AnyTenant {
+		return ""
+	}
+	return s.cfg.OperatorTenant
 }

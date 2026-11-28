@@ -167,7 +167,7 @@ func Setup(d Deps) (*Routes, error) {
 	routes := &Routes{
 		Authed:   map[string]http.Handler{path: handler},
 		Unauthed: oauth.Routes(),
-		Roles:    &roles.Policy{IsAdmin: idp.IsAdmin},
+		Roles:    &roles.Policy{IsAdmin: idp.IsAdmin, Tenant: idp.OperatorTenant, ProviderName: idp.DisplayName, ProviderEnabled: idp.Enabled},
 	}
 	if inf != nil {
 		routes.Authed[infraapi.Prefix] = &infraapi.Handler{Infra: inf, PlanExists: func(id string) bool {

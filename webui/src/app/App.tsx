@@ -62,7 +62,7 @@ import { OperationStatus } from "../../gen/ts/v1/operations_pb";
 import { useResourceStatus } from "../api/resourceStatus";
 import LogoSvg from "../../assets/relyper-logo.svg"; // relyper: branding
 import { AboutModal } from "../relyper/about/AboutModal"; // relyper
-import { ReadOnlyBadge } from "../relyper/identity/ReadOnlyBadge"; // relyper
+import { UserMenu } from "../relyper/identity/UserMenu"; // relyper
 import { keyBy } from "../lib/util";
 import { Code } from "@connectrpc/connect";
 import { LoginModal } from "../features/auth/LoginModal";
@@ -983,7 +983,6 @@ export const App: React.FC = () => {
         </Flex>
 
         <Flex ml="auto" align="center" gap={4}>
-          <ReadOnlyBadge /> {/* relyper: roles for Relyper Identity users */}
           <Text
             fontSize="xs"
             color="whiteAlpha.600"
@@ -992,20 +991,30 @@ export const App: React.FC = () => {
             {config && config.instance ? config.instance : undefined}
           </Text>
           <ColorModeButton color="white" />
-          {config && !config.auth?.disabled && (
-            <Button
-              variant="ghost"
-              size="sm"
-              color="white"
-              _hover={{ bg: "whiteAlpha.200" }}
-              onClick={() => {
-                setAuthToken("");
-                window.location.reload();
-              }}
-            >
-              {m.app_logout()}
-            </Button>
-          )}
+          {/* relyper: user menu (who, how signed in, role, sign-out) */}
+          <UserMenu
+            onSignOut={() => {
+              setAuthToken("");
+              window.location.reload();
+            }}
+            fallback={
+              config &&
+              !config.auth?.disabled && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  color="white"
+                  _hover={{ bg: "whiteAlpha.200" }}
+                  onClick={() => {
+                    setAuthToken("");
+                    window.location.reload();
+                  }}
+                >
+                  {m.app_logout()}
+                </Button>
+              )
+            }
+          />
         </Flex>
       </Flex>
 

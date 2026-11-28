@@ -24,6 +24,7 @@ import (
 	v1 "github.com/garethgeorge/backrest/gen/go/v1"
 	"github.com/garethgeorge/backrest/gen/go/v1/v1connect"
 	"github.com/garethgeorge/backrest/gen/go/v1sync/v1syncconnect"
+	"github.com/garethgeorge/backrest/internal/auth"
 	"github.com/garethgeorge/backrest/internal/relyper/identity"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -33,6 +34,14 @@ type Policy struct {
 	// IsAdmin reports whether a request has full rights. It must return true
 	// for local users and disabled authentication.
 	IsAdmin func(ctx context.Context) bool
+	// Tenant names the tenant of users signed in through Relyper Identity
+	// (shown in the user menu). Optional.
+	Tenant func() string
+	// ProviderName is the display name of the identity provider. Optional.
+	ProviderName func() string
+	// ProviderEnabled reports whether sign-in through Relyper Identity is
+	// offered; local users are then emergency access. Optional.
+	ProviderEnabled func() bool
 }
 
 // ReadOnly reports whether the request is from a read-only user.
@@ -139,16 +148,58 @@ func (b *Backrest) GetConfig(ctx context.Context, req *connect.Request[emptypb.E
 // PathMe tells the web UI whether the current user is read-only.
 const PathMe = "/relyper/identity/me"
 
+// Me describes the signed-in user for the user menu. It holds no secrets.
+type Me struct {
+	// Method is how the user signed in: "relyper" (Relyper Identity),
+	// "local" (local user, emergency access while Relyper Identity is
+	// enabled) or "none" (authentication is disabled).
+	Method       string   `json:"method"`
+	User         string   `json:"user,omitempty"` // name in the audit log
+	Name         string   `json:"name,omitempty"`
+	Email        string   `json:"email,omitempty"`
+	Roles        []string `json:"roles,omitempty"`
+	Tenant       string   `json:"tenant,omitempty"`
+	ProviderName string   `json:"provider_name,omitempty"`
+	Admin        bool     `json:"admin"`
+	ReadOnly     bool     `json:"read_only"`
+	Provider     bool     `json:"provider"` // signed in through Relyper Identity
+	// ProviderEnabled: Relyper Identity sign-in is offered on this server.
+	ProviderEnabled bool `json:"provider_enabled"`
+}
+
+// Describe returns the user of a request.
+func (p *Policy) Describe(ctx context.Context) Me {
+	m := Me{Method: "none", ReadOnly: p.ReadOnly(ctx)}
+	m.Admin = !m.ReadOnly
+	if p != nil && p.ProviderEnabled != nil {
+		m.ProviderEnabled = p.ProviderEnabled()
+	}
+	if id := identity.FromContext(ctx); id != nil {
+		m.Method, m.Provider = "relyper", true
+		m.User, m.Name, m.Email = id.UserName(), id.DisplayName, id.Email
+		m.Roles = append([]string{}, id.Roles...)
+		if p != nil && p.Tenant != nil {
+			m.Tenant = p.Tenant()
+		}
+		if p != nil && p.ProviderName != nil {
+			m.ProviderName = p.ProviderName()
+		}
+		if p != nil && p.IsAdmin != nil {
+			m.Admin = p.IsAdmin(ctx)
+		}
+		return m
+	}
+	if u, ok := ctx.Value(auth.UserContextKey).(*v1.User); ok && u != nil {
+		m.Method, m.User, m.Name = "local", u.GetName(), u.GetName()
+	}
+	return m
+}
+
 // MeHandler answers GET PathMe.
 func (p *Policy) MeHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := identity.FromContext(r.Context())
-		out := map[string]any{"read_only": p.ReadOnly(r.Context()), "provider": id != nil}
-		if id != nil {
-			out["user"] = id.UserName()
-		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		_ = json.NewEncoder(w).Encode(out)
+		_ = json.NewEncoder(w).Encode(p.Describe(r.Context()))
 	})
 }

@@ -106,8 +106,19 @@ configuration, starting backups, restores, forget/prune/check, downloads,
 refused on the server with "read-only access". The configuration a
 read-only user receives has its secrets redacted (repository passwords,
 environment values, passwords in URIs and flags, password hashes, hook
-contents, the multihost key). The header shows a "Read-only" badge. Routes
-that are not known to be read-only are refused (deny by default).
+contents, the multihost key). Routes that are not known to be read-only
+are refused (deny by default).
+
+## User menu
+
+The menu at the top right shows who is signed in: name and e-mail, the
+sign-in method (Relyper, or a local user; "emergency access" while Relyper
+Identity is enabled), the role (Administrator or Read-only), the tenant and
+the provider roles, a sentence on what the role allows, and Sign out. Its
+badge reads "Read-only" for viewers, "Emergency" for a local user while
+Relyper Identity is enabled and "Open" when authentication is off. The data
+comes from `GET /relyper/identity/me` (no secrets). The customer portal has
+the same menu with the company and the customer role.
 
 ## Limits
 

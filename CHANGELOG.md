@@ -8,6 +8,12 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 
 ### Added
 
+- User menu at the top right (operator app and customer portal): who is
+  signed in, sign-in method, role, tenant, what the role allows, sign out.
+  (#42)
+- While Relyper Identity is enabled, the local name/password sign-in (web
+  login and MCP consent page) is hidden behind "Emergency access with a
+  local user". (#39)
 - Single Docker image built from source: web UI, server, verified restic,
   OpenSSH client, rclone; tini as init so stop signals reach backups;
   `/healthz` endpoint and container HEALTHCHECK; `docker-compose.yml`. (#11)

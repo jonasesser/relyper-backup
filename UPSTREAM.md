@@ -58,7 +58,7 @@ Keep this list current; it is the merge checklist.
 | `webui/src/test/setup.tsx` | global mock for `@/relyper/api` | #12 |
 | `webui/src/features/repositories/AddRepoModal.tsx` | renders `SftpDiagnostics`; texts no longer promise automatic host key scanning; product name | #12, #14 |
 | `webui/src/features/settings/SettingsModal.tsx` | product name in one hint; Relyper Identity (OIDC) status card in the Authentication section | #14, #30 |
-| `webui/src/app/App.tsx` | Relyper logo, version opens the About dialog; sidebar entries and routes `/mcp` (MCP page), `/infra` (Infrastructure page) and `/customers` (Customers page); backup health summary above the dashboard; "Read-only" header badge | #14, #17, #22, #28, #32, #33 |
+| `webui/src/app/App.tsx` | Relyper logo, version opens the About dialog; sidebar entries and routes `/mcp` (MCP page), `/infra` (Infrastructure page) and `/customers` (Customers page); backup health summary above the dashboard; user menu at the top right (user, sign-in method, role, sign-out) instead of the logout button | #14, #17, #22, #28, #32, #33, #42 |
 | `webui/index.html` | title and favicon | #14 |
 | `webui/src/app/main.tsx` | renders the customer portal instead of the operator app for `#/portal` | #33 |
 | `internal/auth/auth.go`, `internal/auth/middleware.go` | `SetExternalVerifier`: bearer tokens of Relyper Identity sessions are checked before the upstream JWT | #18 |

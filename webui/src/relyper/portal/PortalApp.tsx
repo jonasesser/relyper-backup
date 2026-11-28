@@ -22,6 +22,7 @@ import { Checkbox } from "../../components/ui/checkbox";
 import { SectionCard } from "../../components/common/SectionCard";
 import { alerts } from "../../components/common/Alerts";
 import IconSvg from "../../../assets/relyper-icon.svg";
+import { UserMenuView } from "../identity/UserMenu";
 import {
   Me,
   Notify,
@@ -854,20 +855,31 @@ export const PortalHome = () => {
             {ov.tenant.name}
           </Heading>
           <Text fontSize="xs" color="fg.muted">
-            Relyper Backup · {me.user.email}
-            {me.admin ? " · admin" : ""}
+            Relyper Backup
           </Text>
         </Box>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => {
+        <UserMenuView
+          title={me.user.name || me.user.email}
+          subtitle={me.user.name ? me.user.email : undefined}
+          rows={[
+            { label: "Sign-in", value: "Relyper" },
+            { label: "Company", value: me.tenant.name },
+            {
+              label: "Role",
+              value: me.admin ? "Administrator" : "Viewer",
+            },
+          ]}
+          rights={
+            me.admin
+              ? "You can see your backups, start backups, change storage and notifications and create recovery kits."
+              : "You can see the state of your backups. Ask an administrator of your company for changes."
+          }
+          badge={me.admin ? undefined : { label: "Viewer", color: "gray" }}
+          onSignOut={() => {
             setPortalToken(null);
             window.location.reload();
           }}
-        >
-          Sign out
-        </Button>
+        />
       </Flex>
 
       {ov.problems.length > 0 && (
