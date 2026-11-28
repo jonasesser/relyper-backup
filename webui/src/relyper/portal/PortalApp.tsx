@@ -199,7 +199,7 @@ const PlanDetails = ({ plan, admin }: { plan: PlanView; admin: boolean }) => {
               <Table.Body>
                 {runs.map((r) => (
                   <Table.Row key={r.operationId}>
-                    <Table.Cell whiteSpace="nowrap">
+                    <Table.Cell whiteSpace={{ base: "normal", md: "nowrap" }}>
                       {formatTime(r.startedAt)}
                     </Table.Cell>
                     <Table.Cell>
@@ -207,10 +207,18 @@ const PlanDetails = ({ plan, admin }: { plan: PlanView; admin: boolean }) => {
                         {runLabel[r.status] || r.status}
                       </Badge>
                     </Table.Cell>
-                    <Table.Cell>
-                      {r.bytesTotal
-                        ? `${formatBytes(r.bytesTotal)} (+${formatBytes(r.bytesAdded)})`
-                        : ""}
+                    {/* two short lines instead of one squeezed column on phones */}
+                    <Table.Cell whiteSpace="nowrap">
+                      {r.bytesTotal ? (
+                        <>
+                          <Text>{formatBytes(r.bytesTotal)}</Text>
+                          <Text fontSize="xs" color="fg.muted">
+                            +{formatBytes(r.bytesAdded)}
+                          </Text>
+                        </>
+                      ) : (
+                        ""
+                      )}
                     </Table.Cell>
                     <Table.Cell fontSize="xs" color="fg.muted">
                       {r.message}
@@ -232,13 +240,13 @@ const PlanDetails = ({ plan, admin }: { plan: PlanView; admin: boolean }) => {
               <Table.Body>
                 {snaps.slice(0, 100).map((s) => (
                   <Table.Row key={s.id}>
-                    <Table.Cell whiteSpace="nowrap">
+                    <Table.Cell whiteSpace={{ base: "normal", md: "nowrap" }}>
                       {formatTime(s.time)}
                     </Table.Cell>
                     <Table.Cell>
                       <Code fontSize="xs">{s.id.slice(0, 8)}</Code>
                     </Table.Cell>
-                    <Table.Cell>
+                    <Table.Cell whiteSpace="nowrap">
                       {s.bytes ? formatBytes(s.bytes) : ""}
                     </Table.Cell>
                     {canRestore && (

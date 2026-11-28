@@ -881,11 +881,12 @@ export const SummaryDashboard = () => {
         <DataListRoot orientation="horizontal">
           <DataListItem
             label={m.dashboard_config_path()}
-            value={summaryData.configPath}
+            // relyper: long paths wrap on phones (#70)
+            value={<Text wordBreak="break-all">{summaryData.configPath}</Text>}
           />
           <DataListItem
             label={m.dashboard_data_dir()}
-            value={summaryData.dataPath}
+            value={<Text wordBreak="break-all">{summaryData.dataPath}</Text>}
           />
         </DataListRoot>
 

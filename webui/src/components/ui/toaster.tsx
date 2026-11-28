@@ -21,7 +21,8 @@ export const Toaster = () => {
     <Portal>
       <ChakraToaster toaster={toaster}>
         {(toast: any) => (
-          <Toast.Root width={{ md: "500px" }}>
+          // relyper: full width on phones, it collapsed to a strip (#70)
+          <Toast.Root width={{ base: "calc(100vw - 2rem)", md: "500px" }}>
             {toast.type === "loading" ? (
               <Spinner size="sm" color="blue.solid" />
             ) : (

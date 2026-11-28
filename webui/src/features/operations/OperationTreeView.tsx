@@ -616,15 +616,19 @@ const BackupView = ({ backup }: { backup?: FlowDisplayInfo }) => {
 
     return (
       <Box width="100%">
+        {/* relyper: title and actions wrap instead of overlapping on phones (#70) */}
         <Flex
           alignItems="center"
           direction="row"
+          wrap="wrap"
+          gap={2}
           width="100%"
-          height="60px"
-          position="relative"
+          minH="60px"
+          py={2}
+          pr={{ base: 8, md: 5 }}
         >
           <Heading size="md">{formatTime(backup.displayTime)}</Heading>
-          <Flex position="absolute" right="20px" gap={2} align="center">
+          <Flex ml="auto" gap={2} align="center" wrap="wrap">
             {snapshotInFlow?.snapshotId && backup.repoID && (
               <PinButton
                 repo={backup.repoID}

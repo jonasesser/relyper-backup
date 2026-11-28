@@ -19,7 +19,8 @@ export const MainContentAreaTemplate = ({
   children: React.ReactNode;
 }) => {
   return (
-    <Box px={6} pb={6}>
+    // relyper: narrower margins on phones (#70)
+    <Box px={{ base: 2, md: 6 }} pb={{ base: 3, md: 6 }}>
       <BreadcrumbRoot my={4}>
         {breadcrumbs.map((b, i) => {
           const isLast = i === breadcrumbs.length - 1;
@@ -41,7 +42,7 @@ export const MainContentAreaTemplate = ({
         })}
       </BreadcrumbRoot>
       <Box
-        p={6}
+        p={{ base: 3, md: 6 }} // relyper: #70
         m={0}
         minH={280}
         bg="bg.panel" // Using semantic token for generic background

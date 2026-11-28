@@ -60,7 +60,7 @@ Keep this list current; it is the merge checklist.
 | `webui/src/features/repositories/AddRepoModal.tsx` | renders `SftpDiagnostics`; texts no longer promise automatic host key scanning; product name; storage type choice with the guided FTP / FTPS form (`FtpRepoSection` wraps the URI field, FTP env entries hidden from the generic env list, `validateFtpConfig`) | #12, #14, #55 |
 | `webui/src/features/settings/SettingsModal.tsx` | product name in one hint; Relyper Identity (OIDC) status card in the Authentication section | #14, #30 |
 | `webui/src/app/App.tsx` | Relyper logo, version opens the About dialog; sidebar entries and routes `/mcp` (MCP page), `/infra` (Infrastructure page) and `/customers` (Customers page); backup health summary above the dashboard; user menu at the top right (user, sign-in method, role, sign-out) instead of the logout button | #14, #17, #22, #28, #32, #33, #42 |
-| `webui/index.html` | title and favicon | #14 |
+| `webui/index.html` | title and favicon; viewport meta tag for phones | #14, #70 |
 | `webui/src/app/main.tsx` | renders the customer portal instead of the operator app for `#/portal` | #33 |
 | `internal/auth/auth.go`, `internal/auth/middleware.go` | `SetExternalVerifier`: bearer tokens of Relyper Identity sessions are checked before the upstream JWT | #18 |
 | `webui/src/features/auth/LoginModal.tsx` | renders `RelyperLogin` (sign-in with Relyper Identity) above the password fields; hides the password fields behind an emergency-access link while Relyper Identity is enabled | #18, #39 |
@@ -68,7 +68,12 @@ Keep this list current; it is the merge checklist.
 | `internal/resticinstaller/resticinstaller.go` | `RequiredResticVersion` 0.20.0 | #38 |
 | `internal/resticinstaller/verify.go` | `github.com/ProtonMail/go-crypto/openpgp` instead of the deprecated `golang.org/x/crypto/openpgp` (one argument added) | #38 |
 | `pkg/restic/restic.go` | `toForgetFlags` adds `--keep-tag relyper-pinned` next to other keep rules; `ForgetSnapshot` refuses pinned snapshots (helpers in the Relyper-owned `pkg/restic/relyper_pin.go`; `internal/orchestrator/repo/relyper_pin.go` adds `SetPinned`) | #67 |
-| `webui/src/features/operations/OperationTreeView.tsx` | snapshot view: Pin/Unpin button, no Forget button for pinned snapshots | #67 |
+| `webui/src/features/operations/OperationTreeView.tsx` | snapshot view: Pin/Unpin button, no Forget button for pinned snapshots; title and actions wrap instead of overlapping | #67, #70 |
+| `webui/src/components/layout/MainContentArea.tsx`, `webui/src/components/common/SectionCard.tsx` | smaller paddings on phones | #70 |
+| `webui/src/components/common/TwoPaneModal.tsx` | phones: full-screen dialog, section nav as a scrolling row above the form, save bar wraps | #70 |
+| `webui/src/components/common/RetentionPolicyView.tsx` | time-bucketed retention fields in one column on phones | #70 |
+| `webui/src/components/ui/toaster.tsx` | toasts use the screen width on phones | #70 |
+| `webui/src/features/dashboard/SummaryDashboard.tsx` | long config/data paths wrap | #70 |
 | `internal/hook/types/command.go` | `hookpolicy.Check` before a command hook runs (`RELYPER_HOOK_COMMANDS`) | #38 |
 | `webui/project.inlang/settings.json` | vendored message-format plugin; messages read from `.relyper-messages/` | #3, #14 |
 | `webui/.gitignore`, `.dockerignore` | generated message catalogs; Docker build context | #11, #14 |

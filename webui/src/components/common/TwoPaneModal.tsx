@@ -117,8 +117,11 @@ export const TwoPaneModal: React.FC<TwoPaneModalProps> = ({
         <DialogPositioner>
           <DialogContent
             maxW={width}
-            height="86vh"
-            maxH="820px"
+            // relyper: full screen on phones (#70)
+            height={{ base: "100dvh", md: "86vh" }}
+            maxH={{ base: "100dvh", md: "820px" }}
+            my={{ base: 0, md: undefined }}
+            borderRadius={{ base: 0, md: undefined }}
             p={0}
             overflow="hidden"
             display="flex"
@@ -191,18 +194,23 @@ export const TwoPaneModal: React.FC<TwoPaneModalProps> = ({
             </Flex>
 
             {/* Two-pane body */}
-            <Flex flex={1} minH={0}>
+            {/* relyper: on phones the nav rail becomes a scrolling row above the form (#70) */}
+            <Flex flex={1} minH={0} direction={{ base: "column", md: "row" }}>
               {/* Nav rail */}
               <Box
                 as="nav"
-                w="196px"
-                borderRightWidth="1px"
+                w={{ base: "full", md: "196px" }}
+                display={{ base: "flex", md: "block" }}
+                gap={1}
+                borderRightWidth={{ base: 0, md: "1px" }}
+                borderBottomWidth={{ base: "1px", md: 0 }}
                 borderColor="border"
-                py={3}
+                py={{ base: 2, md: 3 }}
                 px={2}
                 flexShrink={0}
                 bg="bg.subtle"
-                overflowY="auto"
+                overflowX={{ base: "auto", md: "hidden" }}
+                overflowY={{ base: "hidden", md: "auto" }}
               >
                 {sections.map((s) => {
                   const isActive = activeSection === s.id;
@@ -214,8 +222,10 @@ export const TwoPaneModal: React.FC<TwoPaneModalProps> = ({
                       display="flex"
                       alignItems="center"
                       gap={2}
-                      w="full"
-                      py={1.5}
+                      w={{ base: "auto", md: "full" }}
+                      flexShrink={0}
+                      whiteSpace="nowrap"
+                      py={{ base: 2, md: 1.5 }}
                       px={2.5}
                       bg={isActive ? "bg.muted" : "transparent"}
                       border={0}
@@ -250,7 +260,7 @@ export const TwoPaneModal: React.FC<TwoPaneModalProps> = ({
                 flex={1}
                 overflowY="auto"
                 bg="bg.subtle"
-                p={5}
+                p={{ base: 3, md: 5 }}
               >
                 <TwoPaneContext.Provider value={{ registerRef }}>
                   {children}
@@ -282,8 +292,15 @@ export const TwoPaneModal: React.FC<TwoPaneModalProps> = ({
                 _dark={{ bg: dirty ? "orange.950" : "bg.panel" }}
                 transition="background 120ms linear"
                 flexShrink={0}
+                wrap="wrap" // relyper: status on its own row on phones (#70)
+                justify="flex-end"
               >
-                <Flex align="center" gap={2} flex={1} minW={0}>
+                <Flex
+                  align="center"
+                  gap={2}
+                  flex={{ base: "1 1 100%", md: 1 }}
+                  minW={0}
+                >
                   {dirty ? (
                     <>
                       <Box

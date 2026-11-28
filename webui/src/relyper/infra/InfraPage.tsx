@@ -1359,6 +1359,7 @@ export const InfraPage = () => {
                 colorPalette={g.color}
                 variant={active ? "solid" : "subtle"}
                 cursor="pointer"
+                minH={{ base: "32px", md: "auto" }} // touch target on phones
                 aria-pressed={active}
                 title={
                   (active ? "Show all apps. " : "Show only these apps: ") +

@@ -114,7 +114,11 @@ export const RetentionPolicyView = ({
           )}
 
           {mode === "policyTimeBucketed" && (
-            <Grid templateColumns="repeat(3, 180px)" gap={4}>
+            <Grid
+              // relyper: one column on phones (#70)
+              templateColumns={{ base: "1fr", sm: "repeat(3, 180px)" }}
+              gap={4}
+            >
               <NumberInputField
                 label={m.add_plan_modal_retention_policy_hourly_label()}
                 value={retention?.policyTimeBucketed?.hourly || 0}
