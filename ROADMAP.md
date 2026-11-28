@@ -102,6 +102,8 @@ Design: `docs/CONCEPT-MULTITENANT.md` (#25).
 | Item | Status | Notes |
 |---|---|---|
 | Design: tenants, isolation, notifications, own storage, recovery kit, escrow, threat model | done | #25 |
+| Tenants, separate portal sessions, read-only portal API, operator API | done | #29 |
+| E-mail per tenant (failure, warning, success, stale) | done | #29 – SMTP; not yet tested against a real mail server |
 
 ## Open decisions
 

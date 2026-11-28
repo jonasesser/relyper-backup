@@ -44,6 +44,8 @@ const (
 	FlowWebUI Flow = "ui"
 	// FlowConsent signs in on the MCP OAuth consent page.
 	FlowConsent Flow = "mcp"
+	// FlowPortal signs in to the customer portal.
+	FlowPortal Flow = "portal"
 )
 
 // ConsentCompleter finishes an MCP consent after the provider answered.
@@ -61,14 +63,17 @@ type Options struct {
 	BaseURL func(r *http.Request) string
 	// AuthEnabled reports whether web UI authentication is switched on.
 	AuthEnabled func() bool
+	// Portal admits customers to the customer portal. Nil: no portal.
+	Portal PortalGate
 }
 
 // Service serves the sign-in routes and verifies sessions.
 type Service struct {
-	opt     Options
-	cfg     *Config
-	client  *client
-	key     []byte
+	opt       Options
+	cfg       *Config
+	client    *client
+	key       []byte
+	portalKey []byte // signs portal sessions; never accepted as operator session
 	consent ConsentCompleter
 
 	mu       sync.Mutex
@@ -88,6 +93,7 @@ type pendingTx struct {
 type handoff struct {
 	token   string
 	user    string
+	kind    string // "operator" or "portal"
 	expires time.Time
 }
 
@@ -100,9 +106,19 @@ func New(opt Options) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	portalKey, err := loadKey(filepath.Join(opt.DataDir, "portal-session.key"))
+	if err != nil {
+		return nil, err
+	}
 	s := &Service{
-		opt: opt, cfg: opt.Config, client: newClient(opt.Config, opt.Version), key: key,
+		opt: opt, cfg: opt.Config, client: newClient(opt.Config, opt.Version), key: key, portalKey: portalKey,
 		txs: map[string]*pendingTx{}, handoffs: map[string]*handoff{}, now: time.Now,
+	}
+	if opt.Portal != nil {
+		s.client.extraLogin = func(id *Identity) bool {
+			_, ok := opt.Portal.Admit(id)
+			return ok
+		}
 	}
 	zap.S().Infow("Relyper Identity sign-in enabled", "issuer", opt.Config.Issuer, "client_id", opt.Config.ClientID,
 		"login_role", opt.Config.LoginRole, "admin_role", opt.Config.AdminRole)
@@ -176,6 +192,10 @@ func (s *Service) status(w http.ResponseWriter, r *http.Request) {
 func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if r.URL.Query().Get("portal") == "1" && s.opt.Portal != nil {
+		s.Start(w, r, FlowPortal, "")
 		return
 	}
 	s.Start(w, r, FlowWebUI, "")
@@ -258,8 +278,14 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, p.flow, p.consentRef, asErr(err))
 		return
 	}
-	s.record(r, id.UserName(), "oidc.login", "ok", string(p.flow))
+	operator := s.client.mayLogin(id.Roles)
 	if p.flow == FlowConsent {
+		// MCP access is for operators only; customers never get MCP tokens.
+		if !operator {
+			s.fail(w, r, p.flow, p.consentRef, s.forbidden())
+			return
+		}
+		s.record(r, id.UserName(), "oidc.login", "ok", string(p.flow))
 		if s.consent == nil {
 			http.Error(w, "consent not available", http.StatusInternalServerError)
 			return
@@ -267,18 +293,40 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 		s.consent(w, r, p.consentRef, id, nil)
 		return
 	}
-	token, err := s.issueSession(id)
-	if err != nil {
-		s.fail(w, r, FlowWebUI, "", asErr(err))
+	var token, kind, target string
+	switch {
+	case operator:
+		// Operator roles win: an operator never acts as a tenant member.
+		token, err = s.issueSession(id)
+		kind, target = "operator", "/?relyper_login=1"
+	case s.opt.Portal != nil:
+		m, ok := s.opt.Portal.Admit(id)
+		if !ok {
+			s.fail(w, r, FlowPortal, "", s.forbidden())
+			return
+		}
+		token, err = s.issuePortalSession(id, m)
+		kind, target = "portal", "/?relyper_login=1#/portal"
+	default:
+		s.fail(w, r, p.flow, "", s.forbidden())
 		return
 	}
+	if err != nil {
+		s.fail(w, r, p.flow, "", asErr(err))
+		return
+	}
+	s.record(r, id.UserName(), "oidc.login", "ok", kind)
 	code := randomString(32)
 	s.mu.Lock()
-	s.handoffs[hashString(code)] = &handoff{token: token, user: id.UserName(), expires: s.now().Add(handoffLifetime)}
+	s.handoffs[hashString(code)] = &handoff{token: token, user: id.UserName(), kind: kind, expires: s.now().Add(handoffLifetime)}
 	s.mu.Unlock()
 	http.SetCookie(w, &http.Cookie{Name: handoffCookie, Value: code, Path: PathSession, MaxAge: int(handoffLifetime.Seconds()),
 		HttpOnly: true, Secure: s.secure(r), SameSite: http.SameSiteLaxMode})
-	http.Redirect(w, r, "/?relyper_login=1", http.StatusFound)
+	http.Redirect(w, r, target, http.StatusFound)
+}
+
+func (s *Service) forbidden() *Error {
+	return newErr("forbidden", "Your account has no access to Relyper Backup. Ask an administrator for the role "+s.cfg.LoginRole+".", "no operator role and not admitted to the portal")
 }
 
 // session hands the web UI its token once, after the callback. The custom
@@ -304,7 +352,7 @@ func (s *Service) session(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"token": h.token, "user": h.user})
+	_ = json.NewEncoder(w).Encode(map[string]string{"token": h.token, "user": h.user, "kind": h.kind})
 }
 
 func (s *Service) fail(w http.ResponseWriter, r *http.Request, flow Flow, consentRef string, e *Error) {
@@ -312,6 +360,10 @@ func (s *Service) fail(w http.ResponseWriter, r *http.Request, flow Flow, consen
 	s.record(r, "", "oidc.login", "error", e.Code+": "+e.Detail)
 	if flow == FlowConsent && s.consent != nil {
 		s.consent(w, r, consentRef, nil, e)
+		return
+	}
+	if flow == FlowPortal {
+		http.Redirect(w, r, "/?relyper_login_error="+e.Code+"#/portal", http.StatusFound)
 		return
 	}
 	http.Redirect(w, r, "/?relyper_login_error="+e.Code, http.StatusFound)

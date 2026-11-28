@@ -32,6 +32,7 @@ import (
 	"github.com/garethgeorge/backrest/internal/relyper/infraapi"
 	"github.com/garethgeorge/backrest/internal/relyper/mcp"
 	"github.com/garethgeorge/backrest/internal/relyper/mcpauth"
+	"github.com/garethgeorge/backrest/internal/relyper/portal"
 	"go.uber.org/zap"
 )
 
@@ -86,6 +87,14 @@ func Setup(d Deps) (*Routes, error) {
 	}
 	oauth.Init()
 
+	// Customers (tenants) and the customer portal. A broken tenant store
+	// only disables these features; backups keep working.
+	tenants, err := portal.Prepare(d.Config, d.Orchestrator, d.OpLog, auditLog, dir)
+	if err != nil {
+		zap.S().Errorw("customer features disabled", "error", err)
+		tenants = nil
+	}
+
 	// Sign-in through Relyper Identity (OIDC), optional. A broken
 	// configuration only disables this sign-in; local users keep working.
 	var idp *identity.Service
@@ -95,6 +104,7 @@ func Setup(d Deps) (*Routes, error) {
 		idp, err = identity.New(identity.Options{
 			Config: cfg, DataDir: dir, Version: d.Version, Audit: auditLog, BaseURL: mcpauth.BaseURL,
 			AuthEnabled: func() bool { return authEnabled(d.Config) },
+			Portal:      tenants.IdentityGate(),
 		})
 		if err != nil {
 			zap.S().Errorw("Relyper Identity sign-in disabled", "error", err)
@@ -157,6 +167,15 @@ func Setup(d Deps) (*Routes, error) {
 			_, err := d.Orchestrator.GetPlan(id)
 			return err == nil
 		}}
+	}
+	if tenants != nil {
+		authed, unauthed := tenants.Finish(context.Background(), idp, idp.IsAdmin)
+		for p, hd := range authed {
+			routes.Authed[p] = hd
+		}
+		for p, hd := range unauthed {
+			routes.Unauthed[p] = hd
+		}
 	}
 	routes.Unauthed[mcp.Path] = srv.Handler()
 	if idp != nil {

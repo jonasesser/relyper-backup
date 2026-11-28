@@ -23,6 +23,9 @@ type Identity struct {
 	Email       string   `json:"email"`
 	DisplayName string   `json:"name"`
 	Roles       []string `json:"roles"`
+	// Claims are all claims of the verified ID token (relyper: the customer
+	// portal reads the tenant claim from them). Never logged.
+	Claims map[string]any `json:"-"`
 }
 
 // UserName is the name used for this user inside Relyper Backup (audit log,
@@ -61,6 +64,10 @@ const (
 type client struct {
 	cfg  *Config
 	http *http.Client
+	// extraLogin lets customers of the portal past the operator role gate
+	// (relyper: multi-tenant portal). The callback decides which session
+	// they get.
+	extraLogin func(*Identity) bool
 
 	mu        sync.Mutex
 	provider  *gooidc.Provider
@@ -201,7 +208,7 @@ func (c *client) verifyIDToken(ctx context.Context, p *gooidc.Provider, raw, non
 	if id.Email == "" {
 		return nil, newErr("missing_email", "Your account has no e-mail address.", "id token without email")
 	}
-	if !c.mayLogin(id.Roles) {
+	if !c.mayLogin(id.Roles) && (c.extraLogin == nil || !c.extraLogin(id)) {
 		return nil, newErr("forbidden", "Your account has no access to Relyper Backup. Ask an administrator for the role "+c.cfg.LoginRole+".", "missing role "+c.cfg.LoginRole)
 	}
 	return id, nil
@@ -246,7 +253,7 @@ func claimsToIdentity(claims map[string]any) *Identity {
 	if name == "" {
 		name = email
 	}
-	return &Identity{Subject: asString(claims["sub"]), Email: email, DisplayName: name, Roles: asStringList(claims["roles"])}
+	return &Identity{Subject: asString(claims["sub"]), Email: email, DisplayName: name, Roles: asStringList(claims["roles"]), Claims: claims}
 }
 
 // edgeTransport sends a descriptive User-Agent (bot protection in front of
