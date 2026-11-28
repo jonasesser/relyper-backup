@@ -114,9 +114,9 @@ The `BACKREST_*` names are kept from upstream so existing Backrest
 configurations and documentation keep working.
 
 | `RELYPER_OIDC_*` | unset | Sign-in with Relyper Identity; see `IDENTITY.md`. |
-| `RELYPER_DOCKER_HOST` | `DOCKER_HOST`, else `unix:///var/run/docker.sock` | Docker API for discovery, dumps and restore tests (`unix://` or `tcp://`). Point it at the Relyper Docker guard, e.g. `tcp://docker-guard:2375`. |
+| `RELYPER_GUARD_URL` | `DOCKER_HOST`, else `unix:///var/run/docker.sock` | Address of the Relyper Docker guard, e.g. `tcp://docker-guard:2375`; used for discovery, dumps and restore tests. Deprecated old name: `RELYPER_DOCKER_HOST` (still read). |
 | `RELYPER_HOOK_COMMANDS` | `all` | `dbdump`: command hooks may only run the `relyper-dbdump` command of app plans; any other shell hook fails without running. `all` (upstream behaviour): any command. The compose files set `dbdump`. |
-| `RELYPER_DOCKER_TOKEN` | unset | Token sent to the Relyper Docker guard (same value as `RELYPER_GUARD_TOKEN` there). Secret; never shown or logged. |
+| `RELYPER_GUARD_TOKEN` | unset | Token for the Relyper Docker guard: the same variable with the same value on both services. Secret; never shown or logged. Deprecated old name: `RELYPER_DOCKER_TOKEN` (still read). |
 | `RELYPER_HOST_PATH_MAP` | unset | Host paths mounted elsewhere in the container, e.g. `/srv=/sources/srv,/opt/data=/sources/opt`. |
 | `RELYPER_DUMP_DIR` | `<data>/relyper/dumps` | Where database dumps are written before the backup. |
 | `RELYPER_RESTORE_DIR` | `/restore` if mounted, else `<data>/relyper/restore` | Where the guided app restore (Infrastructure → Restore…) stages data. Mount it writable; never point it at production data. |
@@ -180,9 +180,10 @@ is set twice.
 5. **Environment:**
    - `TZ=Europe/Berlin` (or your zone).
    - Only with `docker-guard`:
-     `RELYPER_DOCKER_HOST=tcp://<project>_docker-guard:2375` (Easypanel's
+     `RELYPER_GUARD_URL=tcp://<project>_docker-guard:2375` (Easypanel's
      internal host name is `<project>_<service>`; check it on the service
-     page) and `RELYPER_DOCKER_TOKEN=<token>`.
+     page) and `RELYPER_GUARD_TOKEN=<token>` (same name and value as on
+     `docker-guard`).
 6. **Hostname:** keep the service name stable. restic stores the hostname in
    every snapshot, and Backrest uses it to match snapshots to plans.
 
@@ -204,7 +205,9 @@ Deploy both and press Refresh on the Infrastructure page: it must show the
 green "Docker guard" badge. While Docker is not reachable the page shows
 these steps too. Coming from an older setup: delete the
 `tecnativa/docker-socket-proxy` service and any socket mount on
-`relyper-backup`.
+`relyper-backup`. Setups with the
+old names `RELYPER_DOCKER_HOST` / `RELYPER_DOCKER_TOKEN` keep working; rename
+them when convenient.
 
 Easypanel runs services as Swarm services named `<project>_<service>` and
 keeps bind-mounted data under `/etc/easypanel/projects/<project>/<service>/`;
@@ -256,8 +259,8 @@ It adds three things:
    `cmd/relyper-docker-guard`): a separate container of about 10 MB (one
    static binary, no shell) that holds the Docker socket. Relyper Backup
    itself has **no** access to the socket; it reaches the guard over an
-   internal network (`RELYPER_DOCKER_HOST=tcp://docker-guard:2375`) with a
-   token (`RELYPER_DOCKER_TOKEN` = the guard's `RELYPER_GUARD_TOKEN`). See
+   internal network (`RELYPER_GUARD_URL=tcp://docker-guard:2375`) with a
+   token (`RELYPER_GUARD_TOKEN`, set to the same value in both services). See
    "Relyper Docker guard" below for what it allows.
 2. **Docker volumes at their real path**, read-only:
    `/var/lib/docker/volumes:/var/lib/docker/volumes:ro`. Plans use the paths

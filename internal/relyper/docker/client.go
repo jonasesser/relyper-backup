@@ -7,10 +7,12 @@
 // which always carry the label relyper.verify=true. The client never stops,
 // restarts or changes other containers.
 //
-// The endpoint comes from RELYPER_DOCKER_HOST, then DOCKER_HOST, then
+// The endpoint comes from RELYPER_GUARD_URL, then RELYPER_DOCKER_HOST
+// (deprecated), then DOCKER_HOST, then
 // unix:///var/run/docker.sock. The recommended endpoint is the Relyper
 // Docker guard (cmd/relyper-docker-guard), which allows exactly the calls
-// made here; RELYPER_DOCKER_TOKEN is sent to it as a bearer token.
+// made here; RELYPER_GUARD_TOKEN (the same variable the guard uses;
+// deprecated: RELYPER_DOCKER_TOKEN) is sent to it as a bearer token.
 package docker
 
 import (
@@ -40,13 +42,26 @@ type Client struct {
 	Endpoint string
 }
 
+// tokenFromEnv returns RELYPER_GUARD_TOKEN, or the deprecated
+// RELYPER_DOCKER_TOKEN.
+func tokenFromEnv() string {
+	for _, name := range []string{"RELYPER_GUARD_TOKEN", "RELYPER_DOCKER_TOKEN"} {
+		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 // ErrUnavailable is returned when no daemon is configured or reachable.
 var ErrUnavailable = errors.New("docker is not available")
 
 // EndpointFromEnv returns the configured Docker endpoint.
 func EndpointFromEnv() string {
-	if v := strings.TrimSpace(os.Getenv("RELYPER_DOCKER_HOST")); v != "" {
-		return v
+	for _, name := range []string{"RELYPER_GUARD_URL", "RELYPER_DOCKER_HOST"} {
+		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+			return v
+		}
 	}
 	if v := strings.TrimSpace(os.Getenv("DOCKER_HOST")); v != "" {
 		return v
@@ -61,7 +76,7 @@ func New(endpoint string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid docker endpoint: %w", err)
 	}
-	c := &Client{Endpoint: endpoint, token: strings.TrimSpace(os.Getenv("RELYPER_DOCKER_TOKEN"))}
+	c := &Client{Endpoint: endpoint, token: tokenFromEnv()}
 	tr := &http.Transport{MaxIdleConns: 4, IdleConnTimeout: 30 * time.Second}
 	switch u.Scheme {
 	case "unix":

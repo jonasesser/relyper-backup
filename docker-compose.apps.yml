@@ -43,8 +43,8 @@ services:
       # Remove this line (or set "all") to allow your own shell hooks; then
       # everyone who can edit a plan can run commands in this container.
       RELYPER_HOOK_COMMANDS: dbdump
-      RELYPER_DOCKER_HOST: tcp://docker-guard:2375
-      RELYPER_DOCKER_TOKEN: ${RELYPER_GUARD_TOKEN:?set RELYPER_GUARD_TOKEN, see the top of this file}
+      RELYPER_GUARD_URL: tcp://docker-guard:2375
+      RELYPER_GUARD_TOKEN: ${RELYPER_GUARD_TOKEN:?set RELYPER_GUARD_TOKEN, see the top of this file}
       # Host paths that are mounted at a different path inside this
       # container, as host=container pairs separated by commas.
       RELYPER_HOST_PATH_MAP: /srv=/sources/srv

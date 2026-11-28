@@ -11,7 +11,7 @@
 //
 //	RELYPER_GUARD_LISTEN         listen address (default :2375)
 //	RELYPER_GUARD_UPSTREAM       Docker endpoint (default unix:///var/run/docker.sock)
-//	RELYPER_GUARD_TOKEN          bearer token Relyper Backup must send (RELYPER_DOCKER_TOKEN there)
+//	RELYPER_GUARD_TOKEN          bearer token; Relyper Backup gets the same variable
 //	RELYPER_GUARD_DUMPS          1: allow the fixed database dump scripts
 //	RELYPER_GUARD_VERIFY         1: allow restore-test containers
 //	RELYPER_GUARD_LIFECYCLE      1: allow stopping and restarting containers

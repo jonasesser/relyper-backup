@@ -1,6 +1,6 @@
 // Relyper-owned tests of the Docker guard against a fake Docker daemon. The
 // end-to-end test with real databases is internal/relyper/dbdump's
-// docker-tagged test run with RELYPER_DOCKER_HOST pointing at a guard.
+// docker-tagged test run with RELYPER_GUARD_URL pointing at a guard.
 package dockerguard
 
 import (

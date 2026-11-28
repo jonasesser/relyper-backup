@@ -704,8 +704,9 @@ export const EasypanelDockerSteps = () => (
     <Stack as="ul" gap={1} ps={5} mt={1} listStyleType="disc">
       <li>
         Environment:{" "}
-        <Code>RELYPER_DOCKER_HOST=tcp://&lt;project&gt;_docker-guard:2375</Code>{" "}
-        and <Code>RELYPER_DOCKER_TOKEN=&lt;token&gt;</Code>
+        <Code>RELYPER_GUARD_URL=tcp://&lt;project&gt;_docker-guard:2375</Code>{" "}
+        and <Code>RELYPER_GUARD_TOKEN=&lt;token&gt;</Code> (same name and value
+        as on <Code>docker-guard</Code>)
       </li>
       <li>
         Mounts (the app data to back up, read-only if possible):{" "}
@@ -836,9 +837,8 @@ export const InfraPage = () => {
           <Text fontSize="sm">
             Relyper Backup cannot reach Docker at <Code>{docker.endpoint}</Code>
             : {docker.error}. Run the Relyper Docker guard and set{" "}
-            <Code>RELYPER_DOCKER_HOST</Code> and{" "}
-            <Code>RELYPER_DOCKER_TOKEN</Code>; see DEPLOYMENT.md. Backups of
-            plain paths keep working without it.
+            <Code>RELYPER_GUARD_URL</Code> and <Code>RELYPER_GUARD_TOKEN</Code>;
+            see DEPLOYMENT.md. Backups of plain paths keep working without it.
           </Text>
           <EasypanelDockerSteps />
         </SectionCard>
