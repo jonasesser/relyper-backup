@@ -76,6 +76,10 @@ export const SetupWizard = ({
   const [picked, setPicked] = useState<Record<string, boolean>>({});
   const [proposals, setProposals] = useState<SetupProposals | null>(null);
   const [include, setInclude] = useState<Record<string, boolean>>({});
+  // Databases mode: shared plans (group name) per app; "" = own plan.
+  const [groups, setGroups] = useState<string[]>([]);
+  const [groupOf, setGroupOf] = useState<Record<string, string>>({});
+  const [newGroup, setNewGroup] = useState("");
   const [opts, setOpts] = useState<SetupOptions | null>(null);
   const [excludes, setExcludes] = useState("");
   const [repo, setRepo] = useState("");
@@ -117,8 +121,14 @@ export const SetupWizard = ({
       const chosen = proposals.apps
         .filter((a) => include[a.app])
         .map((a) => a.app);
+      const shared: Record<string, string[]> = {};
+      if (proposals.mode === "databases") {
+        chosen
+          .filter((id) => groupOf[id])
+          .forEach((id) => (shared[groupOf[id]] ||= []).push(id));
+      }
       const res = await infraApi.createSetup(
-        chosen,
+        chosen.filter((id) => !shared[groupOf[id]]),
         repo,
         {
           ...opts,
@@ -128,6 +138,7 @@ export const SetupWizard = ({
             .filter(Boolean),
         },
         proposals.mode,
+        Object.keys(shared).length ? shared : undefined,
       );
       setResults(res);
       setProposals(null);
@@ -154,6 +165,14 @@ export const SetupWizard = ({
   );
 
   const chosen = proposals?.apps.filter((a) => include[a.app]) || [];
+  const usedGroups = new Set(
+    proposals?.mode === "databases"
+      ? chosen.map((a) => groupOf[a.app]).filter(Boolean)
+      : [],
+  );
+  const planCount =
+    chosen.filter((a) => proposals?.mode !== "databases" || !groupOf[a.app])
+      .length + usedGroups.size;
   const chosenBytes = chosen.reduce((n, a) => n + (a.size?.bytes || 0), 0);
   const chosenComplete = chosen.every((a) => a.size?.complete);
   const storage = proposals?.storage?.[repo];
@@ -203,9 +222,9 @@ export const SetupWizard = ({
         {scope === "databases" && (
           <Text color="fg.muted" data-testid="setup-scope-help">
             One plan per app with a database server (PostgreSQL, MySQL, MariaDB,
-            MongoDB, Redis), named &lt;plan&gt;-db: a consistent dump right
-            before every backup, nothing else. Choose the databases below. App
-            files and SQLite files need the app plans.
+            MongoDB, Redis), named &lt;plan&gt;-db, or shared plans for any
+            selection of them: a consistent dump right before every backup,
+            nothing else. App files and SQLite files need the app plans.
           </Text>
         )}
         {scope === "apps" && (
@@ -270,6 +289,57 @@ export const SetupWizard = ({
                 </Button>
               </Flex>
             )}
+            {proposals.mode === "databases" && (
+              <Flex
+                gap={2}
+                wrap="wrap"
+                align="center"
+                data-testid="setup-groups"
+              >
+                <Text color="fg.muted">
+                  Shared plans: one plan dumps all databases assigned to it (the
+                  apps get its name as tag).
+                </Text>
+                <Input
+                  size="xs"
+                  width="160px"
+                  placeholder="name, e.g. customers"
+                  value={newGroup}
+                  onChange={(e) => setNewGroup(e.target.value)}
+                  data-testid="setup-new-group"
+                />
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={
+                    !/^[a-z0-9][a-z0-9_.-]{0,39}$/.test(
+                      newGroup.trim().toLowerCase().replace(/\s+/g, "-"),
+                    )
+                  }
+                  onClick={() => {
+                    const g = newGroup
+                      .trim()
+                      .toLowerCase()
+                      .replace(/\s+/g, "-");
+                    if (!groups.includes(g)) setGroups([...groups, g]);
+                    setNewGroup("");
+                  }}
+                  data-testid="setup-add-group"
+                >
+                  Add shared plan
+                </Button>
+                {groups.map((g) => (
+                  <Badge key={g} colorPalette="purple">
+                    {g}:{" "}
+                    {
+                      proposals.apps.filter(
+                        (a) => include[a.app] && groupOf[a.app] === g,
+                      ).length
+                    }
+                  </Badge>
+                ))}
+              </Flex>
+            )}
             {(proposals.notes || []).map((n) => (
               <Text key={n} color="fg.muted">
                 {n}
@@ -292,7 +362,29 @@ export const SetupWizard = ({
                   >
                     <b>{a.name}</b>
                   </Check>
-                  {a.plan && <Badge>{a.plan.plan_id}</Badge>}
+                  {proposals.mode === "databases" && groups.length > 0 ? (
+                    <NativeSelect.Root size="xs" width="auto">
+                      <NativeSelect.Field
+                        value={groupOf[a.app] || ""}
+                        onChange={(e) =>
+                          setGroupOf({ ...groupOf, [a.app]: e.target.value })
+                        }
+                        data-testid={`setup-group-${a.name}`}
+                      >
+                        <option value="">
+                          own plan {a.plan ? a.plan.plan_id : ""}
+                        </option>
+                        {groups.map((g) => (
+                          <option key={g} value={g}>
+                            shared plan app-group-{g}-db
+                          </option>
+                        ))}
+                      </NativeSelect.Field>
+                      <NativeSelect.Indicator />
+                    </NativeSelect.Root>
+                  ) : (
+                    a.plan && <Badge>{a.plan.plan_id}</Badge>
+                  )}
                   {a.has_databases && (
                     <Badge colorPalette="blue">databases</Badge>
                   )}
@@ -514,7 +606,7 @@ export const SetupWizard = ({
                 disabled={!repo || chosen.length === 0}
                 data-testid="setup-create"
               >
-                Create {chosen.length} plan{chosen.length === 1 ? "" : "s"}
+                Create {planCount} plan{planCount === 1 ? "" : "s"}
               </Button>
             </Box>
           </Stack>

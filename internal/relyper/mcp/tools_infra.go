@@ -65,6 +65,7 @@ type CreateSetupIn struct {
 	RepoID  string              `json:"repo_id"`
 	Options *infra.SetupOptions `json:"options,omitempty" jsonschema:"default: databases every 6 hours (15 */6 * * *), files daily 02:30, keep 7 daily, 4 weekly, 12 monthly"`
 	Mode    string              `json:"mode,omitempty" jsonschema:"databases: dump-only plans (<plan>-db) with just the database dumps, as proposed by scope databases; empty: full app plans"`
+	Groups  map[string][]string `json:"groups,omitempty" jsonschema:"mode databases only: shared dump plans, group name -> app IDs; the apps get the group name as Relyper tag and one plan dumps all their databases. Apps in app_ids get a plan each."`
 }
 
 type CreateSetupOut struct {
@@ -192,7 +193,7 @@ func registerInfraTools(r *registrar) {
 			if in.Options != nil {
 				o = *in.Options
 			}
-			res, err := inf.CreateSetup(ctx, infra.SetupCreateRequest{Apps: in.Apps, Repo: in.RepoID, Options: o, Mode: in.Mode}, c.actor())
+			res, err := inf.CreateSetup(ctx, infra.SetupCreateRequest{Apps: in.Apps, Repo: in.RepoID, Options: o, Mode: in.Mode, Groups: in.Groups}, c.actor())
 			if err != nil {
 				return nil, err
 			}

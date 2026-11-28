@@ -8,6 +8,8 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 
 ### Added
 
+- "Databases only": databases can be put into shared plans (any number,
+  named; the apps get the name as tag) next to plans of their own. (#72)
 - Set up backups: "Databases only" creates one dump-only plan
   (`<plan>-db`) per app with a database server, selectable one by one; SQLite
   files are listed and stay with the app plans. The plan of Easypanel now

@@ -224,14 +224,26 @@ describe("SetupWizard", () => {
     expect(list).toHaveTextContent("app-shop-db");
     expect(list).toHaveTextContent("size known after the first dump");
     expect(list).toHaveTextContent("SQLite database");
+    // Put the shop into a shared plan.
+    fireEvent.change(screen.getByTestId("setup-new-group"), {
+      target: { value: "Customers" },
+    });
+    fireEvent.click(screen.getByTestId("setup-add-group"));
+    fireEvent.change(screen.getByTestId("setup-group-shop"), {
+      target: { value: "customers" },
+    });
+    expect(screen.getByTestId("setup-groups")).toHaveTextContent(
+      "customers: 1",
+    );
     fireEvent.click(screen.getByTestId("setup-create"));
     await screen.findByTestId("setup-results");
     const call = fetchMock.mock.calls.find((c) =>
       String(c[0]).endsWith("setup/create"),
     )!;
     expect(JSON.parse(String(call[1]!.body))).toMatchObject({
-      apps: ["compose:shop"],
+      apps: [],
       mode: "databases",
+      groups: { customers: ["compose:shop"] },
     });
   });
 });

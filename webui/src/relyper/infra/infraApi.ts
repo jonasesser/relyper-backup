@@ -406,7 +406,9 @@ export const infraApi = {
     repo: string,
     options: SetupOptions,
     mode?: string,
-  ) => call<SetupResult[]>("setup/create", { apps, repo, options, mode }),
+    groups?: Record<string, string[]>,
+  ) =>
+    call<SetupResult[]>("setup/create", { apps, repo, options, mode, groups }),
   dump: (app: string) => call<{ dumps: unknown[] }>("dump", { app }),
   verify: (app: string) => call<{ message: string }>("verify", { app }),
   restoreTest: (plan: string) =>

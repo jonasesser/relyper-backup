@@ -125,6 +125,10 @@ type SetupCreateRequest struct {
 	Options SetupOptions `json:"options"`
 	// Mode "databases" creates dump-only plans (<plan>-db).
 	Mode string `json:"mode,omitempty"`
+	// Groups (mode databases) puts several apps into one shared dump plan
+	// per group: the apps get the group name as tag, and the plan of the
+	// tag group dumps the databases of all of them (group name -> apps).
+	Groups map[string][]string `json:"groups,omitempty"`
 }
 
 // SetupResult is the outcome for one app.
@@ -191,6 +195,19 @@ func dumpOnly(p *AppPlan) {
 	p.PlanID = DatabasePlanID(p.App)
 	p.choose([]string{p.DumpDir})
 	p.Notes = append(p.Notes, "Only the database dumps (and the recovery report); the app's files need the app plan.")
+}
+
+// addTag adds a tag to an app, keeping its other tags.
+func (s *Service) addTag(ctx context.Context, appID, tag, actor string) error {
+	a := s.Inventory(ctx, false).Find(appID)
+	if a == nil {
+		return fmt.Errorf("app %q not found", appID)
+	}
+	if slices.Contains(a.Tags, tag) {
+		return nil
+	}
+	_, err := s.SetTags(ctx, appID, append(append([]string{}, a.Tags...), tag), actor)
+	return err
 }
 
 // ProposeSetup previews the plans for the selected apps, with measured sizes.
@@ -362,8 +379,39 @@ func (s *Service) CreateSetup(ctx context.Context, req SetupCreateRequest, actor
 	if err := o.validate(); err != nil {
 		return nil, err
 	}
-	if len(req.Apps) == 0 || len(req.Apps) > maxSetupApps {
+	grouped := 0
+	for _, apps := range req.Groups {
+		grouped += len(apps)
+	}
+	if len(req.Apps)+grouped == 0 || len(req.Apps)+grouped > maxSetupApps {
 		return nil, errors.New("select between 1 and 200 apps")
+	}
+	if len(req.Groups) > 0 && req.Mode != ModeDatabases {
+		return nil, errors.New("groups are only supported for database plans")
+	}
+	// Shared plans: tag the apps, then treat each tag group like an app.
+	apps := append([]string{}, req.Apps...)
+	var groupErrs []SetupResult
+	for name, members := range req.Groups {
+		tag := discovery.NormalizeTag(name)
+		if tag == "" || len(members) == 0 {
+			groupErrs = append(groupErrs, SetupResult{App: discovery.GroupID(name), Error: "invalid group name or no database in it (letters, digits, '-', '_', '.')"})
+			continue
+		}
+		var err error
+		for _, id := range members {
+			if err = s.addTag(ctx, id, tag, actor); err != nil {
+				break
+			}
+		}
+		if err != nil {
+			groupErrs = append(groupErrs, SetupResult{App: discovery.GroupID(tag), Error: err.Error()})
+			continue
+		}
+		apps = append(apps, discovery.GroupID(tag))
+	}
+	if len(req.Groups) > 0 {
+		s.Inventory(ctx, true) // the new tag groups
 	}
 	ret := &v1.RetentionPolicy{Policy: &v1.RetentionPolicy_PolicyTimeBucketed{PolicyTimeBucketed: &v1.RetentionPolicy_TimeBucketedCounts{
 		Daily: o.Daily, Weekly: o.Weekly, Monthly: o.Monthly, Yearly: o.Yearly}}}
@@ -374,8 +422,8 @@ func (s *Service) CreateSetup(ctx context.Context, req SetupCreateRequest, actor
 	if o.Compression == "max" || o.Compression == "off" {
 		flags = append(flags, "--compression="+o.Compression)
 	}
-	var out []SetupResult
-	for _, app := range req.Apps {
+	out := groupErrs
+	for _, app := range apps {
 		p, err := s.ProposeAppPlan(ctx, app)
 		cron := o.FilesCron
 		if err == nil && len(p.Databases) > 0 {

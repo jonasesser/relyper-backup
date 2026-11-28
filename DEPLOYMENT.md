@@ -330,6 +330,11 @@ To start with the databases, choose "Databases only (dumps of every
 database)" in "Set up backups": one plan per app with a database server,
 named `<plan>-db`, with only the consistent dumps made right before every
 backup (and the recovery report). Choose the databases one by one or all.
+To dump several databases in one plan, add a shared plan ("Add shared
+plan", e.g. `customers`) and assign databases to it; you can create several
+shared plans next to the separate ones. The apps of a shared plan get its
+name as Relyper tag and the plan `app-group-<name>-db` dumps the databases
+of the tag group.
 SQLite databases are files in the app's data and are backed up with the app
 plan. The app plan created later dumps the databases again; delete the `-db`
 plan then or keep it for a more frequent database schedule.
