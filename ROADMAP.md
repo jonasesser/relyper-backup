@@ -49,7 +49,7 @@ Details: `MCP.md`.
 | Server-side approval for restricted operations | done | #17 – restore, delete snapshot, prune, retention, delete plan/repository, trust host key |
 | Audit log | partial | #17 – MCP, approvals, tokens, OAuth; web UI config changes not yet |
 | MCP page in the web UI | done | #17 – connect, approvals, tokens, audit log |
-| Roles and permissions for web UI users | open | Today every web UI user can create tokens and approve requests |
+| Roles and permissions for web UI users | done | #32, #42 – Relyper Identity users: admin (full) or read-only; only admins approve MCP requests and manage tokens; user menu shows role and sign-in method. No finer permissions yet |
 | Tested with claude.ai / ChatGPT connectors | open | Needs a publicly reachable instance |
 | Docker, database, coverage and recovery tools | done | #21 – discovery, coverage, app plans, dumps, restore tests, readiness, report |
 | Container start/stop/restart tools | not planned | Relyper Backup only reads from production containers |
