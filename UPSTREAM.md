@@ -67,6 +67,8 @@ Keep this list current; it is the merge checklist.
 | `webui/package.json` | `start`, `build`, `build-windows`, `compile-i18n` run `relyper/brand-messages.mjs` first; `pnpm.overrides` for `sha.js` and `rollup` (security fixes of build tools) | #14, #38 |
 | `internal/resticinstaller/resticinstaller.go` | `RequiredResticVersion` 0.20.0 | #38 |
 | `internal/resticinstaller/verify.go` | `github.com/ProtonMail/go-crypto/openpgp` instead of the deprecated `golang.org/x/crypto/openpgp` (one argument added) | #38 |
+| `pkg/restic/restic.go` | `toForgetFlags` adds `--keep-tag relyper-pinned` next to other keep rules; `ForgetSnapshot` refuses pinned snapshots (helpers in the Relyper-owned `pkg/restic/relyper_pin.go`; `internal/orchestrator/repo/relyper_pin.go` adds `SetPinned`) | #67 |
+| `webui/src/features/operations/OperationTreeView.tsx` | snapshot view: Pin/Unpin button, no Forget button for pinned snapshots | #67 |
 | `internal/hook/types/command.go` | `hookpolicy.Check` before a command hook runs (`RELYPER_HOOK_COMMANDS`) | #38 |
 | `webui/project.inlang/settings.json` | vendored message-format plugin; messages read from `.relyper-messages/` | #3, #14 |
 | `webui/.gitignore`, `.dockerignore` | generated message catalogs; Docker build context | #11, #14 |

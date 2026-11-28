@@ -13,6 +13,7 @@ import {
   DoRepoTaskRequestSchema,
 } from "../../../gen/ts/v1/service_pb";
 import { infraApi, PlanUsage, RepoUsage } from "./infraApi";
+import { PinButton } from "./PinButton";
 
 export const bytes = (n?: number) => {
   if (!n) return "0 B";
@@ -145,6 +146,45 @@ const RepoCard = ({ r, reload }: { r: RepoUsage; reload: () => void }) => {
             </Table.Root>
           </Box>
         )}
+        <Box data-testid={`usage-pinned-${r.repo}`}>
+          <Text fontSize="sm" fontWeight="medium">
+            Pinned snapshots ({(r.pinned || []).length})
+          </Text>
+          {(r.pinned || []).length === 0 ? (
+            <Text fontSize="xs" color="fg.muted">
+              None. Pin a snapshot on its plan page (“Pin (keep forever)”) to
+              keep it no matter what the retention says, e.g. a known good state
+              before a big change.
+            </Text>
+          ) : (
+            <Stack gap={1} mt={1}>
+              {r.pinned!.map((s) => (
+                <Flex
+                  key={s.id}
+                  gap={2}
+                  wrap="wrap"
+                  align="center"
+                  justify="space-between"
+                  fontSize="sm"
+                >
+                  <Text>
+                    {when(s.time)} · {s.plan || "no plan"} ·{" "}
+                    <Text as="span" fontFamily="mono">
+                      {s.id.slice(0, 8)}
+                    </Text>
+                    {s.size_bytes ? ` · ${bytes(s.size_bytes)}` : ""}
+                  </Text>
+                  <PinButton
+                    repo={r.repo}
+                    snapshot={s.id}
+                    tags={["relyper-pinned"]}
+                    onDone={() => setTimeout(reload, 3000)}
+                  />
+                </Flex>
+              ))}
+            </Stack>
+          )}
+        </Box>
         <Text fontSize="xs" color="fg.muted">
           Latest backup: size of the files in the newest snapshot (what a
           restore writes) and what it added. Stored by plan: what the kept

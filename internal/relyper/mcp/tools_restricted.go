@@ -151,12 +151,18 @@ func registerRestrictedTools(r *registrar) {
 			if v.PlanID == "" {
 				return "", nil, errors.New("the snapshot has no plan tag; delete it in the web UI or with the restic CLI")
 			}
+			if v.Pinned {
+				return "", nil, errors.New("the snapshot is pinned; a person must unpin it on the web UI first")
+			}
 			return fmt.Sprintf("Delete snapshot %s (%s, plan %s) from %s", v.ShortID, v.Time, v.PlanID, in.RepoID), snapshotPreview{Repo: in.RepoID, Snapshot: v}, nil
 		},
 		Execute: func(ctx context.Context, c caller, in SnapshotRefIn) (int64, any, error) {
 			sn, err := s.exactSnapshot(ctx, in.RepoID, in.SnapshotID)
 			if err != nil {
 				return 0, nil, err
+			}
+			if snapshotView(sn).Pinned {
+				return 0, nil, errors.New("the snapshot is pinned; a person must unpin it on the web UI first")
 			}
 			resp, err := s.d.Backrest.Forget(ctx, connect.NewRequest(&v1.ForgetRequest{RepoId: in.RepoID, PlanId: snapshotView(sn).PlanID, SnapshotId: sn.Id}))
 			if err != nil {

@@ -381,6 +381,13 @@ func (r *Repo) Forget(ctx context.Context, policy *RetentionPolicy, opts ...Gene
 
 
 func (r *Repo) ForgetSnapshot(ctx context.Context, snapshotId string, opts ...GenericOption) error {
+	// relyper: a pinned snapshot is never forgotten.
+	if pinned, err := r.IsPinned(ctx, snapshotId, opts...); err != nil || pinned {
+		if err == nil {
+			err = ErrPinned
+		}
+		return err
+	}
 	args := []string{"forget", "--json", snapshotId}
 	cmd := r.commandWithContext(ctx, args, opts...)
 	errorCollector := errorMessageCollector{}
@@ -532,7 +539,7 @@ func (r *RetentionPolicy) toForgetFlags() []string {
 	if r.KeepWithinDuration != "" {
 		flags = append(flags, "--keep-within", r.KeepWithinDuration)
 	}
-	return flags
+	return pinFlags(flags) // relyper: pinned snapshots are always kept
 }
 
 type GenericOpts struct {

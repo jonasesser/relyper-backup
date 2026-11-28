@@ -28,6 +28,8 @@ type RepoUsage struct {
 	StatsAt      string       `json:"stats_at,omitempty"`
 	Storage      *StorageInfo `json:"storage,omitempty"`
 	Plans        []PlanUsage  `json:"plans"`
+	// Pinned snapshots are kept until they are unpinned, newest first.
+	Pinned []PinnedSnapshot `json:"pinned"`
 }
 
 // PlanUsage is the storage use of one plan in a repository.
@@ -68,7 +70,7 @@ func (s *Service) Usage(ctx context.Context) ([]RepoUsage, error) {
 	now := time.Now()
 	out := []RepoUsage{}
 	for _, r := range cfg.Repos {
-		ru := RepoUsage{Repo: r.Id, Location: RedactURI(r.Uri), Storage: s.storageNow(r, now), Plans: []PlanUsage{}}
+		ru := RepoUsage{Repo: r.Id, Location: RedactURI(r.Uri), Storage: s.storageNow(r, now), Plans: []PlanUsage{}, Pinned: []PinnedSnapshot{}}
 		plans := map[string]*PlanUsage{}
 		latest := map[string]int64{}
 		for _, p := range cfg.Plans {
@@ -98,6 +100,13 @@ func (s *Service) Usage(ctx context.Context) ([]RepoUsage, error) {
 					plans[id] = pu
 				}
 				pu.Snapshots++
+				if IsPinned(is.Snapshot) {
+					ps := PinnedSnapshot{ID: is.Snapshot.Id, Plan: op.PlanId, Time: time.UnixMilli(is.Snapshot.UnixTimeMs).UTC().Format(time.RFC3339)}
+					if is.Snapshot.Summary != nil {
+						ps.Size = is.Snapshot.Summary.TotalBytesProcessed
+					}
+					ru.Pinned = append(ru.Pinned, ps)
+				}
 				sum := is.Snapshot.Summary
 				if sum == nil {
 					pu.WithoutSummary++
@@ -122,6 +131,7 @@ func (s *Service) Usage(ctx context.Context) ([]RepoUsage, error) {
 			}
 			return ru.Plans[i].Plan < ru.Plans[j].Plan
 		})
+		sort.Slice(ru.Pinned, func(i, j int) bool { return ru.Pinned[i].Time > ru.Pinned[j].Time })
 		out = append(out, ru)
 	}
 	return out, nil

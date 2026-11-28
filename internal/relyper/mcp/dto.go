@@ -12,6 +12,7 @@ import (
 	"time"
 
 	v1 "github.com/garethgeorge/backrest/gen/go/v1"
+	"github.com/garethgeorge/backrest/pkg/restic"
 )
 
 // Schedule describes when something runs. It is used in tool inputs and
@@ -507,6 +508,7 @@ type SnapshotView struct {
 	Username string   `json:"username,omitempty"`
 	Paths    []string `json:"paths"`
 	Tags     []string `json:"tags,omitempty"`
+	Pinned   bool     `json:"pinned,omitempty"` // kept until unpinned
 	PlanID   string   `json:"plan_id,omitempty"`
 	Parent   string   `json:"parent,omitempty"`
 	Summary  *struct {
@@ -528,6 +530,7 @@ func snapshotView(s *v1.ResticSnapshot) SnapshotView {
 		Paths:    s.Paths,
 		Tags:     s.Tags,
 		Parent:   s.Parent,
+		Pinned:   slices.Contains(s.Tags, restic.PinnedTag),
 	}
 	for _, t := range s.Tags {
 		if p, ok := strings.CutPrefix(t, "plan:"); ok {

@@ -12,6 +12,7 @@ import (
 	"github.com/garethgeorge/backrest/internal/relyper/discovery"
 	"github.com/garethgeorge/backrest/internal/relyper/infra"
 	"github.com/garethgeorge/backrest/internal/relyper/mcpauth"
+	"github.com/garethgeorge/backrest/pkg/restic"
 	"go.uber.org/zap"
 )
 
@@ -28,7 +29,7 @@ type CreateAppPlanIn struct {
 	RepoID    string     `json:"repo_id"`
 	PlanID    string     `json:"plan_id,omitempty" jsonschema:"default: app-<name>"`
 	Schedule  *Schedule  `json:"schedule,omitempty" jsonschema:"default: daily at 02:30 local time"`
-	Retention *Retention `json:"retention,omitempty" jsonschema:"default: 7 daily, 4 weekly, 6 monthly"`
+	Retention *Retention `json:"retention,omitempty" jsonschema:"default: 7 daily, 4 weekly, 12 monthly"`
 	Paths     []string   `json:"paths,omitempty" jsonschema:"item paths from propose_app_backup_plan to back up; default: the items selected there. Required items are always included."`
 }
 
@@ -40,6 +41,18 @@ type SetTagsIn struct {
 type SetTagsOut struct {
 	AppID string   `json:"app_id"`
 	Tags  []string `json:"tags"`
+}
+
+type PinSnapshotIn struct {
+	RepoID     string `json:"repo_id" jsonschema:"repository ID"`
+	SnapshotID string `json:"snapshot_id" jsonschema:"full or short snapshot ID from list_snapshots"`
+}
+
+type PinSnapshotOut struct {
+	RepoID     string `json:"repo_id"`
+	SnapshotID string `json:"snapshot_id"`
+	Pinned     bool   `json:"pinned"`
+	Note       string `json:"note"`
 }
 
 type ProposeSetupIn struct {
@@ -131,6 +144,15 @@ func registerInfraTools(r *registrar) {
 				return nil, err
 			}
 			return &SetTagsOut{AppID: in.AppID, Tags: t}, nil
+		})
+
+	addTool(r, toolSpec{Name: "pin_snapshot", Title: "Pin snapshot", Scope: mcpauth.ScopePlansManage, Idempotent: true,
+		Description: "Pins a snapshot so that it is kept forever: every retention run keeps it and it cannot be forgotten until a person unpins it on the web UI (unpinning is not possible through MCP). Use it before a risky change, to keep a known good state. restic rewrites the snapshot, so it gets a new ID; list_snapshots shows it with the tag " + restic.PinnedTag + "."},
+		func(ctx context.Context, c caller, in PinSnapshotIn) (*PinSnapshotOut, error) {
+			if err := inf.SetPinned(ctx, in.RepoID, in.SnapshotID, true, c.actor()); err != nil {
+				return nil, err
+			}
+			return &PinSnapshotOut{RepoID: in.RepoID, SnapshotID: in.SnapshotID, Pinned: true, Note: "pinned; the snapshot list is refreshed in the background and shows it under a new ID"}, nil
 		})
 
 	addTool(r, toolSpec{Name: "create_app_backup_plan", Title: "Create app backup plan", Scope: mcpauth.ScopePlansManage,

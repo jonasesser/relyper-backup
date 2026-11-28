@@ -55,6 +55,9 @@ type body struct {
 	Paths []string `json:"paths"`
 	// Tags are the Relyper Backup tags of an app (tags/set).
 	Tags []string `json:"tags"`
+	// Snapshot and Pinned for snapshots/pin.
+	Snapshot string `json:"snapshot"`
+	Pinned   bool   `json:"pinned"`
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -123,6 +126,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case !get && route == "tags/set":
 		t, err := h.Infra.SetTags(ctx, b.App, b.Tags, user(r))
 		respond(w, map[string]any{"app": b.App, "tags": t}, err)
+	case !get && route == "snapshots/pin":
+		err := h.Infra.SetPinned(ctx, b.Repo, b.Snapshot, b.Pinned, user(r))
+		respond(w, map[string]any{"repo": b.Repo, "snapshot": b.Snapshot, "pinned": b.Pinned}, err)
 	case !get && route == "restore/stage":
 		res, err := h.Infra.StageAppRestore(ctx, b.App, user(r))
 		respond(w, res, err)

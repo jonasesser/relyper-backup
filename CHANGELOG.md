@@ -8,6 +8,10 @@ https://github.com/garethgeorge/backrest/blob/v1.14.1/CHANGELOG.md
 
 ### Added
 
+- Pin snapshots: a pinned snapshot (restic tag `relyper-pinned`) is kept by
+  every retention run and cannot be forgotten until it is unpinned; pin on
+  the plan page, list on Infrastructure → Storage, MCP `pin_snapshot`. New
+  app plans keep 12 monthly snapshots. (#67)
 - Easypanel-only plan: Easypanel's own backups and action logs and the
   data folders of services are no longer in it; clearer labels. (#66)
 - Easypanel-only plan: from the service folders only the files needed to

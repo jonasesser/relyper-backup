@@ -349,7 +349,18 @@ export type RepoUsage = {
   stats_at?: string;
   storage?: StorageInfo;
   plans: PlanUsage[];
+  pinned?: PinnedSnapshot[];
 };
+
+export type PinnedSnapshot = {
+  id: string;
+  plan?: string;
+  time: string;
+  size_bytes?: number;
+};
+
+// PINNED_TAG marks a snapshot kept until it is unpinned (restic tag).
+export const PINNED_TAG = "relyper-pinned";
 
 export const infraApi = {
   usage: () => call<RepoUsage[]>("usage"),
@@ -365,6 +376,12 @@ export const infraApi = {
   propose: (app: string) => call<AppPlan>("plan/propose", { app }),
   createPlan: (app: string, repo: string, planId: string, paths?: string[]) =>
     call<AppPlan>("plan/create", { app, repo, plan_id: planId, paths }),
+  setPinned: (repo: string, snapshot: string, pinned: boolean) =>
+    call<{ repo: string; snapshot: string; pinned: boolean }>("snapshots/pin", {
+      repo,
+      snapshot,
+      pinned,
+    }),
   setTags: (app: string, tags: string[]) =>
     call<{ app: string; tags: string[] }>("tags/set", { app, tags }),
   stageRestore: (app: string) => call<StageResult>("restore/stage", { app }),

@@ -37,6 +37,14 @@ describe("StorageUsage", () => {
                     added_bytes: 13 * 1024 ** 2,
                   },
                 ],
+                pinned: [
+                  {
+                    id: "abcdef0123456789",
+                    plan: "app-budget",
+                    time: "2026-11-01T02:30:00Z",
+                    size_bytes: 300 * 1024 ** 2,
+                  },
+                ],
               },
             ]),
             { status: 200, headers: { "Content-Type": "application/json" } },
@@ -54,6 +62,10 @@ describe("StorageUsage", () => {
     expect(ep).toHaveTextContent("Easypanel");
     expect(ep).toHaveTextContent("12.0 MB");
     expect(ep).toHaveTextContent("+40.0 KB new");
+    const pinned = screen.getByTestId("usage-pinned-hosteurope");
+    expect(pinned).toHaveTextContent("Pinned snapshots (1)");
+    expect(pinned).toHaveTextContent("abcdef01");
+    expect(pinned).toHaveTextContent("Unpin");
   });
 
   it("formats sizes", () => {

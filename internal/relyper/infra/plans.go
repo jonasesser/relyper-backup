@@ -299,7 +299,7 @@ type CreateAppPlanRequest struct {
 	RepoID    string
 	PlanID    string              // optional
 	Schedule  *v1.Schedule        // optional, default daily 02:30 local time
-	Retention *v1.RetentionPolicy // optional, default 7 daily, 4 weekly, 6 monthly
+	Retention *v1.RetentionPolicy // optional, default 7 daily, 4 weekly, 12 monthly
 	// Excludes (glob patterns) and BackupFlags (e.g. --limit-upload) are
 	// optional.
 	Excludes    []string
@@ -314,7 +314,7 @@ func DefaultSchedule() *v1.Schedule {
 }
 
 func DefaultRetention() *v1.RetentionPolicy {
-	return &v1.RetentionPolicy{Policy: &v1.RetentionPolicy_PolicyTimeBucketed{PolicyTimeBucketed: &v1.RetentionPolicy_TimeBucketedCounts{Daily: 7, Weekly: 4, Monthly: 6}}}
+	return &v1.RetentionPolicy{Policy: &v1.RetentionPolicy_PolicyTimeBucketed{PolicyTimeBucketed: &v1.RetentionPolicy_TimeBucketedCounts{Daily: 7, Weekly: 4, Monthly: 12}}}
 }
 
 // CreateAppPlan creates the backup plan for an app: its data paths and, if

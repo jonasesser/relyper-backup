@@ -294,8 +294,17 @@ MCP), pick an app, choose a repository and create its backup plan. The plan:
   bind mounts, without the live database files. The
   preview lists every item with a checkbox; cache and temporary mounts are
   off by default, the Docker socket is never included;
-- runs daily at 02:30 and keeps 7 daily, 4 weekly and 6 monthly snapshots
+- runs daily at 02:30 and keeps 7 daily, 4 weekly and 12 monthly snapshots
   (change it on the plan page).
+
+To keep a snapshot no matter what the retention says (for example a known
+good state before a big change, in case a problem shows up weeks later),
+open it on the plan page and choose "Pin (keep forever)". A pinned snapshot
+carries the restic tag `relyper-pinned`: every retention run keeps it
+(`restic forget --keep-tag relyper-pinned`) and it cannot be forgotten until
+you unpin it. Infrastructure → Storage lists the pinned snapshots of each
+repository. restic rewrites a snapshot when its tags change, so it gets a new
+ID. MCP clients can pin (`pin_snapshot`) but not unpin.
 
 Easypanel's own settings (everything in `/etc/easypanel` except
 `projects/`: environment variables, domains, ports, Traefik routes,

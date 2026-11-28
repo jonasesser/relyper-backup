@@ -63,6 +63,7 @@ import {
 import { isMobile } from "../../lib/browserUtil";
 import { backrestService } from "../../api/client";
 import { ConfirmButton } from "../../components/common/SpinButton";
+import { PinButton, isPinned } from "../../relyper/infra/PinButton"; // relyper
 import { OplogState, syncStateFromRequest } from "../../api/logState";
 import {
   FlowDisplayInfo,
@@ -577,6 +578,12 @@ const BackupView = ({ backup }: { backup?: FlowDisplayInfo }) => {
       (op) => op.op.case === "operationIndexSnapshot",
     );
 
+    // relyper: pin a snapshot so retention keeps it; a pinned one cannot be forgotten.
+    const snapTags =
+      snapshotInFlow?.op.case === "operationIndexSnapshot"
+        ? snapshotInFlow.op.value.snapshot?.tags
+        : undefined;
+
     const deleteButton =
       snapshotInFlow && snapshotInFlow.snapshotId ? (
         <ConfirmButton
@@ -617,12 +624,20 @@ const BackupView = ({ backup }: { backup?: FlowDisplayInfo }) => {
           position="relative"
         >
           <Heading size="md">{formatTime(backup.displayTime)}</Heading>
-          <Box position="absolute" right="20px">
+          <Flex position="absolute" right="20px" gap={2} align="center">
+            {snapshotInFlow?.snapshotId && backup.repoID && (
+              <PinButton
+                repo={backup.repoID}
+                snapshot={snapshotInFlow.snapshotId}
+                tags={snapTags}
+              />
+            )}
             {backup.status !== OperationStatus.STATUS_PENDING &&
-            backup.status !== OperationStatus.STATUS_INPROGRESS
+            backup.status !== OperationStatus.STATUS_INPROGRESS &&
+            !isPinned(snapTags)
               ? deleteButton
               : null}
-          </Box>
+          </Flex>
         </Flex>
         <OperationListView
           key={backup.flowID}
