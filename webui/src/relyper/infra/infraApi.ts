@@ -210,6 +210,39 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
   return data as T;
 }
 
+export type SetupOptions = {
+  files_cron: string;
+  database_cron: string;
+  daily: number;
+  weekly: number;
+  monthly: number;
+  yearly: number;
+  excludes?: string[];
+  limit_upload_kib?: number;
+  compression?: string;
+};
+
+export type SetupProposal = {
+  app: string;
+  name: string;
+  kind: string;
+  plan?: AppPlan;
+  error?: string;
+  existing_plan: boolean;
+  has_databases: boolean;
+  size?: { bytes: number; files: number; complete: boolean };
+};
+
+export type SetupProposals = {
+  apps: SetupProposal[];
+  total_bytes: number;
+  complete: boolean;
+  storage?: Record<string, StorageInfo>;
+  defaults: SetupOptions;
+};
+
+export type SetupResult = { app: string; plan_id?: string; error?: string };
+
 export const infraApi = {
   coverage: (refresh = false) =>
     call<CoverageReport>("coverage" + (refresh ? "?refresh=1" : "")),
@@ -223,6 +256,10 @@ export const infraApi = {
   propose: (app: string) => call<AppPlan>("plan/propose", { app }),
   createPlan: (app: string, repo: string, planId: string) =>
     call<AppPlan>("plan/create", { app, repo, plan_id: planId }),
+  proposeSetup: (scope: string, apps?: string[]) =>
+    call<SetupProposals>("setup/propose", { scope, apps }),
+  createSetup: (apps: string[], repo: string, options: SetupOptions) =>
+    call<SetupResult[]>("setup/create", { apps, repo, options }),
   dump: (app: string) => call<{ dumps: unknown[] }>("dump", { app }),
   verify: (app: string) => call<{ message: string }>("verify", { app }),
   restoreTest: (plan: string) =>

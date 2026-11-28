@@ -134,7 +134,7 @@ What `docs/CONCEPT.md` asks for and is not (fully) built yet, by section:
 | 8 Databases | Whole-server dumps only (pg_dumpall, all MySQL/MariaDB databases); no per-database selection; no explicit connection validation step; version compatibility is reported only as the image used for the dump. MongoDB is supported in addition. |
 | 9 Coverage | Concept protection states and filters exist (#26). Item states stay more detailed underneath. |
 | 10 Repositories | No guided repository wizard beyond the upstream form and the SFTP diagnostics; Google Drive / Dropbox only via rclone; Host Europe not tested. |
-| 11 Setup wizard | One plan per app; no "whole environment / whole project" selection, no storage estimate, defaults fixed at daily 02:30 and 7/4/6 (editable on the plan page). |
+| 11 Setup wizard | Wizard for the whole Docker environment, all Easypanel projects or selected apps with measured data size and shared options (#34). Granularity is the app (compose project, stack, Easypanel project); single services, directories or databases use the normal plan form. No CPU/RAM impact estimate (not measurable reliably). |
 | 12 Dashboard | Health summary (#28) and notifications for success, failure, low storage, overdue plans (#27). |
 | 13 Disaster recovery | Recovery report with images, paths, test results and restic commands; no guided restore workflows, restoration order, network dependencies or bootstrap tool. |
 | 15 Security | Two roles for Relyper Identity users (read-only and full, #32); no finer permissions. Secrets in `config.json` are not encrypted (upstream). |

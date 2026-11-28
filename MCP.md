@@ -69,10 +69,10 @@ session (JWT) is never accepted on `/mcp`.
 
 | Scope | Tools |
 |---|---|
-| `status:read` | get_system_overview, get_backup_status, list_repositories, get_repository_status, list_backup_plans, get_backup_plan, list_snapshots, get_snapshot_details, list_backup_operations, get_backup_operation, get_backup_errors, get_storage_usage, validate_backup_configuration, create_backup_recommendations, get_approval_request, discover_apps, list_docker_containers, list_docker_services, list_docker_volumes, list_easypanel_projects, list_detected_databases, get_backup_coverage, get_recovery_readiness, get_disaster_recovery_status, get_recovery_report, get_verification_results, propose_app_backup_plan |
+| `status:read` | get_system_overview, get_backup_status, list_repositories, get_repository_status, list_backup_plans, get_backup_plan, list_snapshots, get_snapshot_details, list_backup_operations, get_backup_operation, get_backup_errors, get_storage_usage, validate_backup_configuration, create_backup_recommendations, get_approval_request, discover_apps, list_docker_containers, list_docker_services, list_docker_volumes, list_easypanel_projects, list_detected_databases, get_backup_coverage, get_recovery_readiness, get_disaster_recovery_status, get_recovery_report, get_verification_results, propose_app_backup_plan, propose_backup_setup |
 | `contents:browse` | list_snapshot_files (names only, never file contents) |
 | `repos:manage` | create_repository, update_repository, test_repository_connection, create_sftp_key, scan_sftp_host_keys, test_sftp_connection, trust_sftp_host_key (approval) |
-| `plans:manage` | create_app_backup_plan, create_backup_plan, update_backup_plan, enable_backup_plan, disable_backup_plan, delete_backup_plan (approval) |
+| `plans:manage` | create_app_backup_plan, create_backup_setup, create_backup_plan, update_backup_plan, enable_backup_plan, disable_backup_plan, delete_backup_plan (approval) |
 | `backups:run` | run_backup, run_repository_check, run_repository_stats, cancel_backup_operation, dump_app_databases, run_database_backup, verify_app_databases, run_restore_test |
 | `restore` | restore_snapshot (approval), overwrite_existing_files (approval) |
 | `data:delete` | delete_snapshot, prune_repository, modify_retention_policy, delete_repository (all approval) |
@@ -110,7 +110,11 @@ For Docker apps (needs the Docker connection from `DEPLOYMENT.md`):
 3. `propose_app_backup_plan`, then `create_app_backup_plan` with a
    repository – one plan per app: a hook dumps the databases right before
    every backup (a failed dump fails the backup), and the plan backs up the
-   dumps plus the app's files.
+   dumps plus the app's files. For many apps at once use
+   `propose_backup_setup` (scope `all`, `easypanel` or `apps`; shows the
+   measured data size) and `create_backup_setup` (shared schedule,
+   retention, excludes, upload limit, compression; defaults: databases every
+   6 hours, files daily, 7 daily / 4 weekly / 12 monthly).
 4. `run_backup`, then `verify_app_databases` (restores the dumps from the
    snapshot into a throwaway container and compares tables/collections/keys)
    and `run_restore_test` (restores sample files and checks their sizes).

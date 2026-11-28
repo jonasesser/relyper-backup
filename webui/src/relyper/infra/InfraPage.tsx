@@ -34,6 +34,7 @@ import {
   ServiceInfo,
   infraApi,
 } from "./infraApi";
+import { SetupWizard } from "./SetupWizard";
 
 export const stateColor: Record<string, string> = {
   protected: "green",
@@ -841,6 +842,9 @@ export const InfraPage = () => {
       <TabsRoot value={tab} onValueChange={(e: any) => setTab(e.value)}>
         <TabsList mb={4} flexWrap="wrap">
           <TabsTrigger value="apps">Apps</TabsTrigger>
+          {docker?.available && (
+            <TabsTrigger value="setup">Set up backups</TabsTrigger>
+          )}
           <TabsTrigger value="readiness">Readiness</TabsTrigger>
           <TabsTrigger value="report">Recovery report</TabsTrigger>
         </TabsList>
@@ -905,6 +909,13 @@ export const InfraPage = () => {
               </Text>
             )}
           </Stack>
+        </TabsContent>
+        <TabsContent value="setup">
+          <SetupWizard
+            apps={apps}
+            easypanel={!!docker?.easypanel}
+            onDone={() => reload(true)}
+          />
         </TabsContent>
         <TabsContent value="readiness">
           <ReadinessSection rd={rd} />

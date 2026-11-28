@@ -57,9 +57,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	route := strings.TrimPrefix(r.URL.Path, Prefix)
 	ctx := r.Context()
 	var b body
+	var raw json.RawMessage
 	if r.Method == http.MethodPost {
 		r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-		if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		if err := json.NewDecoder(r.Body).Decode(&raw); err != nil || json.Unmarshal(raw, &b) != nil {
 			fail(w, http.StatusBadRequest, errors.New("invalid JSON body"))
 			return
 		}
@@ -112,6 +113,22 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case !get && route == "plan/create":
 		p, err := h.Infra.CreateAppPlan(ctx, infra.CreateAppPlanRequest{AppID: b.App, RepoID: b.Repo, PlanID: b.PlanID}, user(r))
 		respond(w, p, err)
+	case !get && route == "setup/propose":
+		var sr infra.SetupRequest
+		if err := json.Unmarshal(raw, &sr); err != nil {
+			fail(w, http.StatusBadRequest, err)
+			return
+		}
+		p, err := h.Infra.ProposeSetup(ctx, sr)
+		respond(w, p, err)
+	case !get && route == "setup/create":
+		var sr infra.SetupCreateRequest
+		if err := json.Unmarshal(raw, &sr); err != nil {
+			fail(w, http.StatusBadRequest, err)
+			return
+		}
+		res, err := h.Infra.CreateSetup(ctx, sr, user(r))
+		respond(w, res, err)
 	case !get && route == "dump":
 		m, err := h.Infra.DumpNow(ctx, b.App, user(r))
 		respond(w, m, err)

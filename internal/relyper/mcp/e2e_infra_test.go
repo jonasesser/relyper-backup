@@ -45,15 +45,20 @@ func TestE2EInfra(t *testing.T) {
 
 	const pw = "e2e-db-secret-4711"
 	const repoPassword = "e2e-infra-repo-password"
-	for _, n := range []string{"relyper-e2e-db", "relyper-e2e-web"} {
+	blog := filepath.Join(t.TempDir(), "blog")
+	os.MkdirAll(blog, 0o755)
+	os.WriteFile(filepath.Join(blog, "post.md"), []byte(strings.Repeat("x", 5000)), 0o644)
+	for _, n := range []string{"relyper-e2e-db", "relyper-e2e-web", "relyper-e2e-blog"} {
 		exec.Command("docker", "rm", "-f", "-v", n).Run()
 	}
 	docker(t, "run", "-d", "--name", "relyper-e2e-db", "--label", "com.docker.compose.project=e2eshop", "--label", "com.docker.compose.service=db",
 		"-e", "POSTGRES_PASSWORD="+pw, "-e", "POSTGRES_DB=shop", "postgres:16-alpine")
 	docker(t, "run", "-d", "--name", "relyper-e2e-web", "--label", "com.docker.compose.project=e2eshop", "--label", "com.docker.compose.service=web",
 		"-v", uploads+":/app/uploads", "redis:7-alpine")
+	docker(t, "run", "-d", "--name", "relyper-e2e-blog", "--label", "com.docker.compose.project=e2eblog", "--label", "com.docker.compose.service=web",
+		"-v", blog+":/srv/blog", "redis:7-alpine")
 	t.Cleanup(func() {
-		exec.Command("docker", "rm", "-f", "-v", "relyper-e2e-db", "relyper-e2e-web").Run()
+		exec.Command("docker", "rm", "-f", "-v", "relyper-e2e-db", "relyper-e2e-web", "relyper-e2e-blog").Run()
 	})
 	deadline := time.Now().Add(2 * time.Minute)
 	for exec.Command("docker", "exec", "relyper-e2e-db", "pg_isready", "-h", "127.0.0.1").Run() != nil {
@@ -85,6 +90,39 @@ func TestE2EInfra(t *testing.T) {
 	if !strings.Contains(toJSON(plan["paths"]), uploads) {
 		t.Fatalf("uploads not in plan: %v", plan)
 	}
+	// Setup wizard: the shop has a plan now, the blog (redis, so database
+	// schedule) gets one with shared
+	// options.
+	setup := mustCall(t, s, "propose_backup_setup", map[string]any{"scope": "apps", "app_ids": []string{"compose:e2eshop", "compose:e2eblog"}})
+	t.Logf("setup proposal: %s", toJSON(setup))
+	for _, a := range setup["apps"].([]any) {
+		a := a.(map[string]any)
+		size := a["size"].(map[string]any)
+		switch a["app"] {
+		case "compose:e2eshop":
+			if a["existing_plan"] != true || a["has_databases"] != true {
+				t.Fatalf("shop proposal: %v", a)
+			}
+		case "compose:e2eblog":
+			if a["existing_plan"] != false || size["bytes"].(float64) < 5000 || size["complete"] != true {
+				t.Fatalf("blog proposal: %v", a)
+			}
+		}
+	}
+	created := mustCall(t, s, "create_backup_setup", map[string]any{"app_ids": []string{"compose:e2eshop", "compose:e2eblog"}, "repo_id": "local",
+		"options": map[string]any{"files_cron": "0 3 * * *", "database_cron": "15 */6 * * *", "daily": 7, "weekly": 4, "monthly": 12,
+			"excludes": []string{"*.tmp"}, "limit_upload_kib": 2048, "compression": "max"}})
+	results := toJSON(created)
+	if !strings.Contains(results, "already exists") || !strings.Contains(results, `"plan_id":"app-e2eblog"`) {
+		t.Fatalf("setup results: %s", results)
+	}
+	bp := toJSON(mustCall(t, s, "get_backup_plan", map[string]any{"plan_id": "app-e2eblog"}))
+	for _, want := range []string{"15 */6 * * *", "*.tmp", "--limit-upload=2048", "--compression=max", blog} {
+		if !strings.Contains(bp, want) {
+			t.Fatalf("plan from setup lacks %q: %s", want, bp)
+		}
+	}
+
 	op := mustCall(t, s, "run_backup", map[string]any{"plan_id": planID})
 	done := waitOp(t, s, op["operation_id"].(float64))
 	if done["status"] != "success" {

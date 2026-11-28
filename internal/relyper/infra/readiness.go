@@ -84,15 +84,7 @@ func repoType(uri string) string {
 func (s *Service) repoReadiness(cfg *v1.Config, r *v1.Repo, now time.Time) RepoReadiness {
 	rr := RepoReadiness{Repo: r.Id, Location: RedactURI(r.Uri), Type: repoType(r.Uri)}
 	rr.Offsite = rr.Type != "local"
-	if st, ok := s.Storage(r.Id); ok {
-		rr.Storage = &st
-	} else if p := localRepoPath(r.Uri); rr.Type == "local" && p != "" {
-		// Local storage is cheap to measure; do not wait for the first round.
-		if free, total, err := statfs(p); err == nil && total > 0 {
-			rr.Storage = &StorageInfo{FreeBytes: free, TotalBytes: total, CheckedAt: fmtTime(now), Source: "filesystem",
-				Low: s.s.LowStoragePercent > 0 && float64(free) < float64(total)*float64(s.s.LowStoragePercent)/100}
-		}
-	}
+	rr.Storage = s.storageNow(r, now)
 	if s.d.OpLog == nil || r.Guid == "" {
 		return rr
 	}
@@ -325,4 +317,20 @@ func (s *Service) RecoveryReport(ctx context.Context) (string, error) {
 		}
 	}
 	return b.String(), nil
+}
+
+// storageNow returns the last measured storage of a repository. Local
+// storage is cheap to measure, so it is measured right away when the
+// periodic check has not run yet.
+func (s *Service) storageNow(r *v1.Repo, now time.Time) *StorageInfo {
+	if st, ok := s.Storage(r.Id); ok {
+		return &st
+	}
+	if p := localRepoPath(r.Uri); repoType(r.Uri) == "local" && p != "" {
+		if free, total, err := statfs(p); err == nil && total > 0 {
+			return &StorageInfo{FreeBytes: free, TotalBytes: total, CheckedAt: fmtTime(now), Source: "filesystem",
+				Low: s.s.LowStoragePercent > 0 && float64(free) < float64(total)*float64(s.s.LowStoragePercent)/100}
+		}
+	}
+	return nil
 }

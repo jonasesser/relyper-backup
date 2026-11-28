@@ -31,6 +31,21 @@ type CreateAppPlanIn struct {
 	Retention *Retention `json:"retention,omitempty" jsonschema:"default: 7 daily, 4 weekly, 6 monthly"`
 }
 
+type ProposeSetupIn struct {
+	Scope string   `json:"scope" jsonschema:"all (every app on the Docker host), easypanel (every Easypanel project) or apps (the apps listed in app_ids)"`
+	Apps  []string `json:"app_ids,omitempty" jsonschema:"app IDs from discover_apps, for scope apps"`
+}
+
+type CreateSetupIn struct {
+	Apps    []string            `json:"app_ids" jsonschema:"app IDs to create one plan each for"`
+	RepoID  string              `json:"repo_id"`
+	Options *infra.SetupOptions `json:"options,omitempty" jsonschema:"default: databases every 6 hours (15 */6 * * *), files daily 02:30, keep 7 daily, 4 weekly, 12 monthly"`
+}
+
+type CreateSetupOut struct {
+	Results []infra.SetupResult `json:"results"`
+}
+
 type VerificationsIn struct {
 	AppID  string `json:"app_id,omitempty" jsonschema:"database restore tests of this app"`
 	PlanID string `json:"plan_id,omitempty" jsonschema:"file restore tests of this plan"`
@@ -116,6 +131,24 @@ func registerInfraTools(r *registrar) {
 				req.Retention = ret
 			}
 			return inf.CreateAppPlan(ctx, req, c.actor())
+		})
+
+	addTool(r, read("propose_backup_setup", "Propose backup setup", "Backup setup wizard, step 1: proposes one backup plan per app for the whole Docker environment, all Easypanel projects or selected apps, with the measured size of the data to back up (a lower bound if measuring took too long), free repository storage where measured, existing plans and the default options. Changes nothing."),
+		func(ctx context.Context, c caller, in ProposeSetupIn) (*infra.SetupProposals, error) {
+			return inf.ProposeSetup(ctx, infra.SetupRequest{Scope: in.Scope, Apps: in.Apps})
+		})
+	addTool(r, toolSpec{Name: "create_backup_setup", Title: "Create backup setup", Scope: mcpauth.ScopePlansManage,
+		Description: "Backup setup wizard, step 2: creates one plan per listed app with shared options (cron schedules for apps with and without databases, daily/weekly/monthly/yearly retention, exclude patterns, upload limit, compression). Apps that fail, e.g. because the plan exists, are reported and do not stop the rest."},
+		func(ctx context.Context, c caller, in CreateSetupIn) (*CreateSetupOut, error) {
+			o := infra.DefaultSetupOptions()
+			if in.Options != nil {
+				o = *in.Options
+			}
+			res, err := inf.CreateSetup(ctx, infra.SetupCreateRequest{Apps: in.Apps, Repo: in.RepoID, Options: o}, c.actor())
+			if err != nil {
+				return nil, err
+			}
+			return &CreateSetupOut{Results: res}, nil
 		})
 
 	run := func(name, title, desc string) toolSpec {

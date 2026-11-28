@@ -2,6 +2,9 @@
 package infra
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -161,5 +164,47 @@ func TestStorageTargets(t *testing.T) {
 	free, total, err := statfs(t.TempDir() + "/not/yet")
 	if err != nil || total <= 0 || free < 0 {
 		t.Errorf("statfs: %d %d %v", free, total, err)
+	}
+}
+
+func TestMeasure(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "a"), 0o755)
+	os.WriteFile(filepath.Join(dir, "a", "x"), make([]byte, 1000), 0o644)
+	os.WriteFile(filepath.Join(dir, "y"), make([]byte, 24), 0o644)
+	dumps := filepath.Join(dir, "dumps")
+	os.MkdirAll(dumps, 0o755)
+	os.WriteFile(filepath.Join(dumps, "db.sql"), make([]byte, 5000), 0o644)
+	est := measure(context.Background(), []string{dumps, dir}, dumps, time.Second)
+	// The dump directory itself is skipped as a root but counted below dir.
+	if est.Bytes != 6024 || est.Files != 3 || !est.Complete {
+		t.Fatalf("%+v", est)
+	}
+	if est := measure(context.Background(), []string{filepath.Join(dir, "missing")}, "", time.Second); est.Complete {
+		t.Fatalf("missing path counted as complete: %+v", est)
+	}
+	if est := measure(context.Background(), []string{dir}, "", 0); est.Complete {
+		t.Fatal("no time is not complete")
+	}
+}
+
+func TestSetupOptionsValidate(t *testing.T) {
+	o := DefaultSetupOptions()
+	if err := o.validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []func(*SetupOptions){
+		func(o *SetupOptions) { o.FilesCron = "daily" },
+		func(o *SetupOptions) { o.DatabaseCron = "* * * *; rm -rf /" },
+		func(o *SetupOptions) { o.Daily = -1 },
+		func(o *SetupOptions) { o.Excludes = []string{"a\\nb", ""} },
+		func(o *SetupOptions) { o.LimitUploadKiB = -5 },
+		func(o *SetupOptions) { o.Compression = "zstd" },
+	} {
+		o := DefaultSetupOptions()
+		bad(&o)
+		if err := o.validate(); err == nil {
+			t.Errorf("accepted %+v", o)
+		}
 	}
 }

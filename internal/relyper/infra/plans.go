@@ -112,6 +112,10 @@ type CreateAppPlanRequest struct {
 	PlanID    string              // optional
 	Schedule  *v1.Schedule        // optional, default daily 02:30 local time
 	Retention *v1.RetentionPolicy // optional, default 7 daily, 4 weekly, 6 monthly
+	// Excludes (glob patterns) and BackupFlags (e.g. --limit-upload) are
+	// optional.
+	Excludes    []string
+	BackupFlags []string
 }
 
 // DefaultSchedule and DefaultRetention for app plans.
@@ -145,7 +149,7 @@ func (s *Service) CreateAppPlan(ctx context.Context, req CreateAppPlanRequest, a
 	if ret == nil {
 		ret = DefaultRetention()
 	}
-	plan := &v1.Plan{Id: p.PlanID, Repo: req.RepoID, Paths: p.Paths, Schedule: sched, Retention: ret}
+	plan := &v1.Plan{Id: p.PlanID, Repo: req.RepoID, Paths: p.Paths, Schedule: sched, Retention: ret, Excludes: req.Excludes, BackupFlags: req.BackupFlags}
 	if p.HookCommand != "" {
 		if err := os.MkdirAll(p.DumpDir, 0o700); err != nil {
 			return nil, fmt.Errorf("creating the dump directory: %w", err)
