@@ -155,6 +155,57 @@ describe("PortalApp", () => {
     expect(createObjectURL).toHaveBeenCalled();
   });
 
+  it("restores a Budget snapshot as a new budget after a confirmation", async () => {
+    localStorage.setItem(portalTokenKey, "t");
+    const budgetOverview = {
+      ...overview,
+      plans: [
+        {
+          ...overview.plans[0],
+          id: "t-acme-budget",
+          state: "ok",
+          app: "budget",
+          appUser: "kunde@acme.example",
+        },
+      ],
+      problems: [],
+    };
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u.endsWith("api/overview"))
+        return Promise.resolve(json(budgetOverview));
+      if (u.includes("t-acme-budget/snapshots"))
+        return Promise.resolve(
+          json([{ id: "snap1234abcd", time: 1764000000000, paths: ["/x"] }]),
+        );
+      if (u.includes("t-acme-budget/runs")) return Promise.resolve(json([]));
+      if (u.includes("t-acme-budget/restore"))
+        return Promise.resolve(
+          json({ names: ["Haushalt (restored 2026-11-28)"] }),
+        );
+      return route(true)(url, init);
+    });
+    renderWithProviders(<PortalApp />);
+    expect(await screen.findByTestId("plan-t-acme-budget")).toHaveTextContent(
+      "Relyper Budget",
+    );
+    fireEvent.click(screen.getByText("Details"));
+    fireEvent.click(await screen.findByTestId("restore-snap1234abcd"));
+    expect(
+      fetchMock.mock.calls.some((c) => String(c[0]).includes("/restore")),
+    ).toBe(false);
+    fireEvent.click(screen.getByTestId("restore-confirm-snap1234abcd"));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find((c) =>
+        String(c[0]).includes("/restore"),
+      );
+      expect(call).toBeTruthy();
+      expect(JSON.parse(String((call![1] as RequestInit).body))).toEqual({
+        snapshot: "snap1234abcd",
+      });
+    });
+  });
+
   it("drops an expired session", async () => {
     localStorage.setItem(portalTokenKey, "old");
     const reload = vi.fn();

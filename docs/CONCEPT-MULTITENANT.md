@@ -215,6 +215,30 @@ can send slow or large answers. DNS can change after validation (DNS
 rebinding); the address check is repeated before each connection test, not
 before every restic request.
 
+## Apps with all customers in one place (Relyper Budget)
+
+Whole-container customers are backed up as described above. Relyper Budget
+is different: all its users share one server and one `account.sqlite`,
+while each budget lives in its own files (`file-<id>.blob`,
+`group-<id>.sqlite`, `documents/file-<id>/`), end-to-end encrypted with the
+user's budget password. Slicing those files out of the shared volume would
+tie Relyper Backup to Budget's storage layout and could not restore safely.
+
+So the app does the slicing: Budget exports one user (all budgets the user
+owns, still encrypted, manifest with SHA-256) and imports such an export as
+new budgets of that user. Relyper Backup links a Budget user to a tenant
+(`AppLink` in `tenants.json`; one tenant per Budget user), creates a plan
+whose "before backup" hook stores the export in a per-user directory, and
+offers restores in the portal. Rules:
+
+- Restore never replaces the live budget; it adds new budgets.
+- The snapshot must belong to a plan the tenant sees and that has an app
+  link; only customer admins restore; rate limit as for other actions.
+- The token between the two servers is only in their environments; the
+  Budget routes are off without it.
+- Nothing is decrypted: the key is the customer's budget password, so key
+  escrow does not apply to these plans.
+
 ## Keys: recovery kit and optional escrow
 
 restic repositories can have several keys (passwords) for the same data.
@@ -281,6 +305,8 @@ key anyway); it protects against loss of the customer's kit.
 | Malicious operator / compromised server | Can read everything (server key). Residual risk inherent to a managed service; customers who need more keep their own storage and can revoke the server key. Audit log records operator actions on tenants. |
 | A customer floods the server (backup now, restores) | One running portal action per tenant, rate limits. |
 | Enumeration of tenants or plans | Same error for unknown, suspended and foreign; no tenant list in the portal. |
+| Customer restores into another Budget user | The restore uses the Budget user of the plan's app link, which only the operator sets; the customer sends a snapshot ID only. |
+| Tampered or cut-off export | The export is checked against its manifest before it replaces the last good one, and again by Budget before an import. |
 | Customer deletes their backups | Not possible from the portal; deletion, prune and retention changes stay with the operator. |
 
 ## API surface

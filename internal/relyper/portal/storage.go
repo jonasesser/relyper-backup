@@ -369,6 +369,15 @@ func (s *Storage) CopyPlan(t *tenant.Tenant, sourcePlan, repoID, name string) (*
 	if err != nil {
 		return nil, err
 	}
+	// A copied Budget plan exports the same user and can be restored too.
+	if l := t.App(sourcePlan); l != nil {
+		c := *l
+		c.Plan, c.Created = id, time.Now().UTC()
+		if _, err := s.Store.SetApp(t.ID, c); err != nil {
+			return nil, err
+		}
+		return created, nil
+	}
 	if _, err := s.Store.AssignPlan(t.ID, id); err != nil {
 		return nil, err
 	}

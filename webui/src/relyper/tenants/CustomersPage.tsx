@@ -30,6 +30,20 @@ export type Kit = {
   escrowFile?: string;
 };
 
+export type AppLink = {
+  plan: string;
+  app: string;
+  user: string;
+  userName: string;
+};
+
+export type BudgetUser = {
+  id: string;
+  userName: string;
+  displayName?: string;
+  budgets: { id: string; name: string; bytes: number }[];
+};
+
 export type Tenant = {
   id: string;
   name: string;
@@ -41,6 +55,7 @@ export type Tenant = {
   ownRepos?: string[];
   notify: { recipients?: string[]; events?: string[] };
   kits?: Kit[];
+  apps?: AppLink[];
 };
 
 export type ObjectRef = { id: string; repo?: string; tenant?: string };
@@ -100,6 +115,107 @@ export const tenantsApi = {
     call<Tenant>("POST", `${id}/repos`, { repo }),
   unassignRepo: (id: string, repo: string) =>
     call<Tenant>("DELETE", `${id}/repos/${encodeURIComponent(repo)}`),
+  budgetUsers: () =>
+    call<{ users: BudgetUser[]; owners: Record<string, string> }>(
+      "GET",
+      "_budget/users",
+    ),
+  budgetPlan: (id: string, user: string, repo: string) =>
+    call<{ plan: string }>("POST", `${id}/budget`, { user, repo }),
+};
+
+// BudgetBackup links Relyper Budget users of this customer to a plan that
+// backs up their export (all their budgets, still encrypted).
+const BudgetBackup = ({
+  t,
+  run,
+}: {
+  t: Tenant;
+  run: (f: () => Promise<unknown>, ok: string) => void;
+}) => {
+  const [users, setUsers] = useState<{
+    users: BudgetUser[];
+    owners: Record<string, string>;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [user, setUser] = useState("");
+  const [repo, setRepo] = useState("");
+  useEffect(() => {
+    tenantsApi
+      .budgetUsers()
+      .then(setUsers)
+      .catch((e) => setError(e.message));
+  }, []);
+  const links = (t.apps || []).filter((l) => l.app === "budget");
+  const free = (users?.users || []).filter(
+    (u) => !users?.owners[u.id] || users?.owners[u.id] === t.id,
+  );
+  return (
+    <Box data-testid={`budget-${t.id}`}>
+      <Text fontSize="sm" fontWeight="semibold">
+        Relyper Budget backup
+      </Text>
+      {links.length > 0 && (
+        <Stack gap={0} my={1}>
+          {links.map((l) => (
+            <Text key={l.plan} fontSize="sm">
+              {l.userName || l.user} → plan <Code fontSize="xs">{l.plan}</Code>
+            </Text>
+          ))}
+        </Stack>
+      )}
+      {error ? (
+        <Text fontSize="xs" color="fg.muted">
+          {error}
+        </Text>
+      ) : (
+        <Flex gap={2} wrap="wrap">
+          <NativeSelect.Root size="sm" maxW="260px">
+            <NativeSelect.Field
+              value={user}
+              onChange={(e) => setUser(e.target.value)}
+              data-testid={`budget-user-${t.id}`}
+            >
+              <option value="">Budget user…</option>
+              {free.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.userName} ({u.budgets.length} budget
+                  {u.budgets.length === 1 ? "" : "s"})
+                </option>
+              ))}
+            </NativeSelect.Field>
+          </NativeSelect.Root>
+          <NativeSelect.Root size="sm" maxW="220px">
+            <NativeSelect.Field
+              value={repo}
+              onChange={(e) => setRepo(e.target.value)}
+              data-testid={`budget-repo-${t.id}`}
+            >
+              <option value="">Into repository…</option>
+              {(t.repos || []).map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </NativeSelect.Field>
+          </NativeSelect.Root>
+          <Button
+            size="sm"
+            disabled={!user || !repo}
+            onClick={() =>
+              run(
+                () => tenantsApi.budgetPlan(t.id, user, repo),
+                "Budget backup set up (daily 02:30)",
+              )
+            }
+            data-testid={`budget-create-${t.id}`}
+          >
+            Set up
+          </Button>
+        </Flex>
+      )}
+    </Box>
+  );
 };
 
 const split = (s: string) =>
@@ -142,6 +258,11 @@ const Setup = ({ status }: { status?: Record<string, any> }) => {
         !!status.escrow,
         "Key escrow",
         "set RELYPER_ESCROW_PUBLIC_KEY (relyper-escrow keygen)",
+      )}
+      {row(
+        !!status.budget,
+        "Relyper Budget backups",
+        "set RELYPER_BUDGET_URL and RELYPER_BUDGET_TOKEN",
       )}
       <Text fontSize="xs" color="fg.muted">
         Customers sign in with the role{" "}
@@ -350,6 +471,7 @@ const TenantCard = ({
             </Button>
           </Flex>
         </Box>
+        {list.status?.budget && <BudgetBackup t={t} run={run} />}
         <Text fontSize="sm">
           E-mail: {(t.notify.recipients || []).join(", ") || "no recipients"} ·
           events: {(t.notify.events || []).join(", ") || "none"}

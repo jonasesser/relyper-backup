@@ -30,6 +30,9 @@ export type PlanView = {
   lastRun?: RunView;
   lastSuccessAt?: number;
   snapshots: number;
+  // Set for plans that back up one Relyper Budget user ("budget").
+  app?: string;
+  appUser?: string;
 };
 
 export type KitView = {
@@ -62,7 +65,12 @@ export type Me = {
   tenant: TenantInfo;
   user: { email: string; name: string };
   admin: boolean;
-  features: { email: boolean; storage: boolean; kits: boolean };
+  features: {
+    email: boolean;
+    storage: boolean;
+    kits: boolean;
+    restore?: boolean;
+  };
 };
 
 export type SnapshotView = {
@@ -167,6 +175,13 @@ export const portalApi = {
       "POST",
       `plans/${encodeURIComponent(plan)}/backup`,
       {},
+    ),
+  // restore adds the budgets of a snapshot as new budgets; nothing is replaced.
+  restore: (plan: string, snapshot: string) =>
+    call<{ names: string[] }>(
+      "POST",
+      `plans/${encodeURIComponent(plan)}/restore`,
+      { snapshot },
     ),
   notifications: () =>
     call<{ notify: Notify; events: string[]; available: boolean }>(

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 	"github.com/garethgeorge/backrest/internal/orchestrator"
 	"github.com/garethgeorge/backrest/internal/orchestrator/repo"
 	"github.com/garethgeorge/backrest/internal/orchestrator/tasks"
+	"github.com/garethgeorge/backrest/internal/relyper/appexport"
 	"github.com/garethgeorge/backrest/internal/relyper/audit"
 	"github.com/garethgeorge/backrest/internal/relyper/identity"
 	"github.com/garethgeorge/backrest/internal/relyper/tenant"
@@ -128,7 +130,27 @@ func (w *Wiring) Finish(ctx context.Context, idp *identity.Service, isAdmin func
 	}
 	kits := &Kits{Store: w.Store, Config: w.getConfig, Keys: &resticKeys{get: w.orch.GetRepoOrchestrator}, EscrowPublicKey: pub, EscrowDir: filepath.Join(w.dataDir, "escrow")}
 
-	op := &Operator{Store: w.Store, Config: w.getConfig, Audit: w.audit, IsAdmin: isAdmin, Status: func() map[string]any {
+	var apps *Apps
+	if bc, err := appexport.BudgetConfigFromEnv(nil); err != nil {
+		zap.S().Errorw("Relyper Budget customer backups disabled", "error", err)
+	} else if bc != nil {
+		command := "relyper-appexport"
+		if v := strings.TrimSpace(os.Getenv("RELYPER_APPEXPORT_COMMAND")); v != "" {
+			command = v
+		}
+		apps = &Apps{Store: w.Store, Config: w.getConfig, Transform: w.transform, Budget: &appexport.Budget{Cfg: *bc},
+			ExportBase: filepath.Join(w.dataDir, "app-exports"), Command: command,
+			Dump: func(ctx context.Context, repoID, snapshotID, file string, out io.Writer) error {
+				ro, err := w.orch.GetRepoOrchestrator(repoID)
+				if err != nil {
+					return err
+				}
+				return ro.Dump(ctx, snapshotID, file, out)
+			}}
+		zap.S().Infow("Relyper Budget customer backups enabled", "url", bc.URL)
+	}
+
+	op := &Operator{Store: w.Store, Apps: apps, Config: w.getConfig, Audit: w.audit, IsAdmin: isAdmin, Status: func() map[string]any {
 		st := map[string]any{
 			"portal":          w.Portal.Enabled && idp.PortalEnabled(),
 			"portalRequested": w.Portal.Enabled,
@@ -139,6 +161,7 @@ func (w *Wiring) Finish(ctx context.Context, idp *identity.Service, isAdmin func
 			"customerAdmin":   w.Portal.AdminRole,
 			"staleHours":      int(w.stale.Hours()),
 			"escrow":          pub != nil,
+			"budget":          apps != nil,
 		}
 		if w.smtpErr != nil {
 			st["emailError"] = w.smtpErr.Error()
@@ -149,7 +172,7 @@ func (w *Wiring) Finish(ctx context.Context, idp *identity.Service, isAdmin func
 	unauthed = map[string]http.Handler{}
 	if w.Portal.Enabled && idp != nil {
 		h := New(Deps{Store: w.Store, Gate: w.Gate, Verify: idp.VerifyPortal, Config: w.getConfig, OpLog: w.oplog, Audit: w.audit,
-			StartBackup: w.startBackup, Notifier: w.notifier, Storage: storage, Kits: kits, StaleAfter: w.stale})
+			StartBackup: w.startBackup, Notifier: w.notifier, Storage: storage, Kits: kits, Apps: apps, StaleAfter: w.stale})
 		unauthed[APIPrefix] = h
 		zap.S().Infow("customer portal enabled", "tenant_claim", w.Portal.Claim, "role", w.Portal.Role, "admin_role", w.Portal.AdminRole)
 	} else if w.Portal.Enabled {

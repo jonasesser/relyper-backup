@@ -110,6 +110,7 @@ Design: `docs/CONCEPT-MULTITENANT.md` (#25).
 | Own storage (S3, B2, Azure, REST), plan copy to own storage | done | #31 – validated, not yet tried against real accounts; SFTP later |
 | Recovery kit with separate customer key, optional escrow, `relyper-escrow` | done | #31 – tested against restic 0.19.1 |
 | Customer portal UI (`/#/portal`) and operator page "Customers" | done | #33 |
+| Relyper Budget customers: export per user, plan per customer, restore from the portal as a new budget | done | #68 + relyper-budget #298 – end-to-end tested with a real encrypted budget |
 | Restores from the portal (file download) | open | customers restore with the recovery kit or through the operator |
 | SFTP as own storage | open | needs the host key flow of #12 in the portal |
 | Tenant-scoped MCP access | open | MCP stays operator-only |

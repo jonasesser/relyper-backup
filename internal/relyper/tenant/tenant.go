@@ -67,6 +67,18 @@ type Kit struct {
 	EscrowFile string `json:"escrowFile,omitempty"`
 }
 
+// AppLink says that a plan backs up one user of an app that keeps all its
+// customers in one place (Relyper Budget). The plan's hook fetches that
+// user's export; a restore hands the export back to the app.
+type AppLink struct {
+	Plan     string    `json:"plan"`
+	App      string    `json:"app"`      // "budget"
+	User     string    `json:"user"`     // user ID in the app
+	UserName string    `json:"userName"` // for display
+	Dir      string    `json:"dir"`      // export directory
+	Created  time.Time `json:"createdAt"`
+}
+
 // Tenant is one customer.
 type Tenant struct {
 	ID          string    `json:"id"`
@@ -79,7 +91,18 @@ type Tenant struct {
 	OwnRepos    []string  `json:"ownRepos,omitempty"` // subset of Repos connected by the customer
 	Notify      Notify    `json:"notify"`
 	Kits        []Kit     `json:"kits,omitempty"`
+	Apps        []AppLink `json:"apps,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
+}
+
+// App returns the app link of a plan or nil.
+func (t *Tenant) App(plan string) *AppLink {
+	for i := range t.Apps {
+		if t.Apps[i].Plan == plan {
+			return &t.Apps[i]
+		}
+	}
+	return nil
 }
 
 // HasPlan reports whether the plan is assigned.
@@ -121,6 +144,7 @@ func (t *Tenant) clone() *Tenant {
 	c.Notify.Recipients = slices.Clone(t.Notify.Recipients)
 	c.Notify.Events = slices.Clone(t.Notify.Events)
 	c.Kits = slices.Clone(t.Kits)
+	c.Apps = slices.Clone(t.Apps)
 	return &c
 }
 
@@ -442,6 +466,7 @@ func (s *Store) assign(id, obj string, list func(*Tenant) *[]string, kind string
 func (s *Store) UnassignPlan(id, planID string) (*Tenant, error) {
 	return s.Update(id, func(t *Tenant) error {
 		t.Plans = slices.DeleteFunc(t.Plans, func(p string) bool { return p == planID })
+		t.Apps = slices.DeleteFunc(t.Apps, func(l AppLink) bool { return l.Plan == planID })
 		return nil
 	})
 }
@@ -531,6 +556,41 @@ func (s *Store) AddOwnRepo(id, repoID string) (*Tenant, error) {
 	})
 }
 
+// OwnerOfApp returns the tenant that has a plan for this app user.
+func (s *Store) OwnerOfApp(app, user string) (*Tenant, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, t := range s.tenants {
+		for _, l := range t.Apps {
+			if l.App == app && l.User == user {
+				return t.clone(), true
+			}
+		}
+	}
+	return nil, false
+}
+
+// SetApp assigns the plan to the tenant and records its app link.
+func (s *Store) SetApp(id string, l AppLink) (*Tenant, error) {
+	if l.Plan == "" || l.App == "" || l.User == "" {
+		return nil, errors.New("plan, app and user are required")
+	}
+	return s.Update(id, func(t *Tenant) error {
+		for _, o := range s.tenants {
+			if o.ID != id && o.HasPlan(l.Plan) {
+				return fmt.Errorf("plan %s is already assigned to tenant %s", l.Plan, o.ID)
+			}
+		}
+		if !t.HasPlan(l.Plan) {
+			t.Plans = append(t.Plans, l.Plan)
+			sort.Strings(t.Plans)
+		}
+		t.Apps = slices.DeleteFunc(t.Apps, func(o AppLink) bool { return o.Plan == l.Plan })
+		t.Apps = append(t.Apps, l)
+		return nil
+	})
+}
+
 // SetKit replaces the kit record of a repository.
 func (s *Store) SetKit(id string, k Kit) (*Tenant, error) {
 	return s.Update(id, func(t *Tenant) error {
@@ -549,12 +609,13 @@ func (s *Store) Prune(plans, repos map[string]bool) (removed int, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, t := range s.tenants {
-		before := len(t.Plans) + len(t.Repos)
+		before := len(t.Plans) + len(t.Repos) + len(t.Apps)
 		t.Plans = slices.DeleteFunc(t.Plans, func(p string) bool { return !plans[p] })
+		t.Apps = slices.DeleteFunc(t.Apps, func(l AppLink) bool { return !plans[l.Plan] })
 		t.Repos = slices.DeleteFunc(t.Repos, func(p string) bool { return !repos[p] })
 		t.OwnRepos = slices.DeleteFunc(t.OwnRepos, func(p string) bool { return !repos[p] })
 		t.Kits = slices.DeleteFunc(t.Kits, func(k Kit) bool { return !repos[k.Repo] })
-		removed += before - len(t.Plans) - len(t.Repos)
+		removed += before - len(t.Plans) - len(t.Repos) - len(t.Apps)
 	}
 	if removed == 0 {
 		return 0, nil

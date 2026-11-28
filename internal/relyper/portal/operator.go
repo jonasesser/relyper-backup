@@ -9,6 +9,7 @@ import (
 
 	v1 "github.com/garethgeorge/backrest/gen/go/v1"
 	"github.com/garethgeorge/backrest/internal/auth"
+	"github.com/garethgeorge/backrest/internal/relyper/appexport"
 	"github.com/garethgeorge/backrest/internal/relyper/audit"
 	"github.com/garethgeorge/backrest/internal/relyper/tenant"
 )
@@ -26,6 +27,8 @@ type Operator struct {
 	IsAdmin func(ctx context.Context) bool
 	// Status describes the portal setup for the page.
 	Status func() map[string]any
+	// Apps creates Relyper Budget plans; nil when RELYPER_BUDGET_URL is unset.
+	Apps *Apps
 }
 
 func operatorName(r *http.Request) string {
@@ -50,6 +53,7 @@ type tenantBody struct {
 	Plan        string         `json:"plan"`
 	Repo        string         `json:"repo"`
 	Notify      *tenant.Notify `json:"notify"`
+	User        string         `json:"user"` // Relyper Budget user
 }
 
 // ObjectRef is a plan or repository available for assignment.
@@ -87,6 +91,40 @@ func (o *Operator) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodGet && len(parts) == 0:
 		o.list(w)
+	case r.Method == http.MethodGet && route == "_budget/users":
+		if o.Apps == nil {
+			fail(w, http.StatusNotFound, "Relyper Budget is not connected (RELYPER_BUDGET_URL)")
+			return
+		}
+		users, err := o.Apps.Budget.Users(r.Context())
+		if err != nil {
+			fail(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		owners := map[string]string{}
+		for _, t := range o.Store.List() {
+			for _, l := range t.Apps {
+				if l.App == appexport.AppBudget {
+					owners[l.User] = t.ID
+				}
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"users": users, "owners": owners})
+	case r.Method == http.MethodPost && len(parts) == 2 && parts[1] == "budget":
+		if o.Apps == nil {
+			fail(w, http.StatusNotFound, "Relyper Budget is not connected (RELYPER_BUDGET_URL)")
+			return
+		}
+		name := ""
+		if b.Name != nil {
+			name = *b.Name
+		}
+		p, err := o.Apps.CreateBudgetPlan(r.Context(), parts[0], BudgetPlanRequest{User: b.User, Repo: b.Repo, Name: name})
+		var v any
+		if p != nil {
+			v = map[string]string{"plan": p.GetId()}
+		}
+		o.done(w, r, "tenant.budget_plan", parts[0]+" user "+b.User+" repo "+b.Repo, v, err)
 	case r.Method == http.MethodPost && len(parts) == 0:
 		name := ""
 		if b.Name != nil {

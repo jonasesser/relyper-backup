@@ -36,6 +36,8 @@ type Deps struct {
 	Storage *Storage
 	// Kits creates recovery kits; nil disables them.
 	Kits *Kits
+	// Apps restores Relyper Budget plans; nil disables restores.
+	Apps *Apps
 	// StaleAfter marks a plan stale without a successful backup (default 36h).
 	StaleAfter time.Duration
 	Now        func() time.Time
@@ -171,6 +173,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				"email":   h.d.Notifier != nil,
 				"storage": h.d.Storage != nil,
 				"kits":    h.d.Kits != nil,
+				"restore": h.d.Apps != nil,
 			},
 		})
 	case r.Method == http.MethodGet && route == "overview":
@@ -187,6 +190,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.backup(w, r, m, parts[1])
+	case r.Method == http.MethodPost && len(parts) == 3 && parts[0] == "plans" && parts[2] == "restore":
+		if !h.requireAdmin(w, r, m, "portal.restore") {
+			return
+		}
+		h.serveRestore(w, r, m, parts[1])
 	case r.Method == http.MethodGet && route == "notifications":
 		writeJSON(w, http.StatusOK, map[string]any{"notify": m.tenant.Notify, "events": tenant.AllEvents, "available": h.d.Notifier != nil})
 	case r.Method == http.MethodPut && route == "notifications":
@@ -314,6 +322,9 @@ func (h *Handler) overview(t *tenant.Tenant) (*Overview, error) {
 		sum := h.summarize(s, p)
 		v := PlanView{ID: p.GetId(), Repo: p.GetRepo(), Paths: append([]string{}, p.GetPaths()...), Schedule: scheduleText(p.GetSchedule()),
 			Retention: retentionText(p.GetRetention()), OwnStorage: t.IsOwnRepo(p.GetRepo()), Snapshots: sum.snapshots, LastSuccessAt: sum.lastSuccess}
+		if l := t.App(p.GetId()); l != nil {
+			v.App, v.AppUser = l.App, l.UserName
+		}
 		if sum.last != nil {
 			v.LastRun = runView(sum.last, sc)
 		}

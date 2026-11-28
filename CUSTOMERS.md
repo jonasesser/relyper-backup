@@ -95,6 +95,46 @@ storage.
 
 SFTP is not offered in the portal yet (it needs the host key flow).
 
+## Relyper Budget customers
+
+Relyper Budget keeps all its users on one server, so a customer's data
+cannot be backed up as files of their own. Instead Relyper Budget exports
+one user at a time (relyper-budget #298): every budget the user owns, its
+sync data and its documents, all still end-to-end encrypted with the
+user's budget password, plus a manifest with the SHA-256 of every file.
+
+Setup:
+
+1. In Relyper Budget set `RELYPER_BACKUP_TOKEN` (random, at least 32
+   characters, e.g. `openssl rand -hex 32`).
+2. In Relyper Backup set `RELYPER_BUDGET_URL` (how Relyper Backup reaches
+   Relyper Budget, e.g. `http://relyper-budget:80` on the same Docker
+   network) and `RELYPER_BUDGET_TOKEN` (or `_FILE`) to the same token.
+   The "Customers" page then shows "Relyper Budget backups: on".
+3. Create the customer, assign a repository (yours, or let the customer
+   connect their own storage first), then under **Relyper Budget backup**
+   pick the customer's Budget user and the repository and press **Set up**.
+
+This creates the plan `t-<tenant>-budget-<user>` (daily 02:30, 7 daily, 4
+weekly, 6 monthly). Its "before backup" hook runs
+`relyper-appexport budget --dir '<data>/relyper/app-exports/<tenant>/budget-<user>' '<user>'`,
+which fetches the export, checks every checksum and only then replaces
+`budget-export.tar`; a failed export fails the backup. The strict hook
+policy (`RELYPER_HOOK_COMMANDS=dbdump`) allows exactly this command. A
+Budget user belongs to one customer only. "Copy plan" to the customer's
+own storage keeps the link, so that copy can be restored too.
+
+Restore: in the portal a customer admin opens the plan, picks a snapshot
+and confirms **Restore → Add as new budget**. Relyper Backup dumps the
+export from the snapshot and hands it to Relyper Budget, which adds each
+budget as a **new** budget "… (restored YYYY-MM-DD)" of that user. The
+live budget is never replaced (that would break the sync on the user's
+other devices). The user opens it with the budget password of that time.
+Bank links and households are not part of the export.
+
+The key stays with the customer (their budget password); Relyper Backup
+and the operator cannot read the budgets, so key escrow does not apply.
+
 ## Recovery kits and key escrow
 
 A recovery kit is a text file with the repository location, a **customer
@@ -144,8 +184,9 @@ changes by operators with source `ui`.
   suspending the tenant, removing its claim value or the customer role in
   the settings takes effect on the next request.
 - MCP stays operator-only.
-- Restores from the portal (download of files) are not built yet; customers
-  restore with their recovery kit or ask you.
+- Restores from the portal exist for Relyper Budget plans only. File
+  downloads for other plans are not built yet; customers restore with
+  their recovery kit or ask you.
 - Own storage was checked by validation and unit tests and the kit against a
   real restic repository; real S3/B2/Azure/REST accounts were not tested
   yet.

@@ -54,6 +54,10 @@ type PlanView struct {
 	LastRun       *RunView `json:"lastRun,omitempty"`
 	LastSuccessAt int64    `json:"lastSuccessAt,omitempty"`
 	Snapshots     int      `json:"snapshots"`
+	// App is set for plans that back up one user of an app ("budget");
+	// their snapshots can be restored from the portal.
+	App     string `json:"app,omitempty"`
+	AppUser string `json:"appUser,omitempty"`
 }
 
 // KitView describes a recovery kit without the key.

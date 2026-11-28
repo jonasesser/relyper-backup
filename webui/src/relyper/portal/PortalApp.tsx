@@ -136,9 +136,26 @@ const SignIn = ({ error }: { error: string | null }) => {
 
 // ---- plans ----
 
-const PlanDetails = ({ plan }: { plan: PlanView }) => {
+const PlanDetails = ({ plan, admin }: { plan: PlanView; admin: boolean }) => {
   const [snaps, setSnaps] = useState<SnapshotView[] | null>(null);
   const [runs, setRuns] = useState<RunView[] | null>(null);
+  const [confirm, setConfirm] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const canRestore = admin && plan.app === "budget";
+  const restore = async (id: string) => {
+    setRestoring(true);
+    try {
+      const res = await portalApi.restore(plan.id, id);
+      alerts.success(
+        `Restored as a new budget: ${res.names.join(", ") || "none"}. Open it in Relyper Budget with the budget password of that time.`,
+      );
+      setConfirm(null);
+    } catch (e: any) {
+      alerts.error(e.message);
+    } finally {
+      setRestoring(false);
+    }
+  };
   useEffect(() => {
     portalApi
       .snapshots(plan.id)
@@ -159,6 +176,12 @@ const PlanDetails = ({ plan }: { plan: PlanView }) => {
           Schedule: {plan.schedule}
           {plan.retention ? ` · ${plan.retention}` : ""}
         </Text>
+        {plan.app === "budget" && (
+          <Text fontSize="sm" color="fg.muted">
+            Relyper Budget account {plan.appUser}: all your budgets with their
+            documents, still encrypted with your budget password.
+          </Text>
+        )}
       </Box>
       <Box>
         <Text fontWeight="semibold" fontSize="sm" mb={1}>
@@ -218,6 +241,39 @@ const PlanDetails = ({ plan }: { plan: PlanView }) => {
                     <Table.Cell>
                       {s.bytes ? formatBytes(s.bytes) : ""}
                     </Table.Cell>
+                    {canRestore && (
+                      <Table.Cell textAlign="end">
+                        {confirm === s.id ? (
+                          <Flex gap={2} justify="end" wrap="wrap">
+                            <Button
+                              size="xs"
+                              loading={restoring}
+                              onClick={() => restore(s.id)}
+                              data-testid={`restore-confirm-${s.id}`}
+                            >
+                              Add as new budget
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              disabled={restoring}
+                              onClick={() => setConfirm(null)}
+                            >
+                              Cancel
+                            </Button>
+                          </Flex>
+                        ) : (
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            onClick={() => setConfirm(s.id)}
+                            data-testid={`restore-${s.id}`}
+                          >
+                            Restore
+                          </Button>
+                        )}
+                      </Table.Cell>
+                    )}
                   </Table.Row>
                 ))}
               </Table.Body>
@@ -275,6 +331,11 @@ const Plans = ({
                     own storage
                   </Badge>
                 )}
+                {p.app === "budget" && (
+                  <Badge colorPalette="teal" variant="outline">
+                    Relyper Budget
+                  </Badge>
+                )}
               </Flex>
               <Text fontSize="sm" color="fg.muted">
                 Last successful backup: {formatTime(p.lastSuccessAt)} ·{" "}
@@ -303,7 +364,7 @@ const Plans = ({
           </Flex>
           {open === p.id && (
             <Box mt={3}>
-              <PlanDetails plan={p} />
+              <PlanDetails plan={p} admin={admin} />
             </Box>
           )}
         </Box>
